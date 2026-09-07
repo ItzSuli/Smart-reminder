@@ -25,10 +25,12 @@ android {
         // (see .github/workflows/build.yml). The same key must be used for every build,
         // otherwise Android refuses to install the new APK over the old one.
         create("release") {
-            storeFile = rootProject.file(System.getenv("KEYSTORE_FILE") ?: "keystore/smart-reminder.jks")
-            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "smartreminder"
-            keyAlias = System.getenv("KEY_ALIAS") ?: "smartreminder"
-            keyPassword = System.getenv("KEY_PASSWORD") ?: "smartreminder"
+            // CI exports these even when the secrets are unset (as empty strings), so blank means "use the default".
+            fun env(name: String, default: String) = System.getenv(name)?.takeIf { it.isNotBlank() } ?: default
+            storeFile = rootProject.file(env("KEYSTORE_FILE", "keystore/smart-reminder.jks"))
+            storePassword = env("KEYSTORE_PASSWORD", "smartreminder")
+            keyAlias = env("KEY_ALIAS", "smartreminder")
+            keyPassword = env("KEY_PASSWORD", "smartreminder")
         }
     }
 
