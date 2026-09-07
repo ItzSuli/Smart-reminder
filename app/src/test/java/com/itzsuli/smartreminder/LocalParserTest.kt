@@ -80,9 +80,12 @@ class LocalParserTest {
     }
 
     @Test
-    fun `common words are not mistaken for weekdays`() {
+    fun `common words are not mistaken for weekdays or subjects`() {
         val p = parser.parse("pay money for the fridge")
         assertNull(p.dueDate)
+        assertEquals("Pay money for the fridge", p.title)
+        val q = parser.parse("do it by friday")
+        assertEquals("Do it", q.title)
     }
 
     @Test
@@ -93,10 +96,56 @@ class LocalParserTest {
     }
 
     @Test
-    fun `german input works too`() {
+    fun `english school shortcuts are expanded`() {
+        val p = parser.parse("M T3 p32 till tmrw")
+        assertEquals("Math task 3 page 32", p.title)
+        assertEquals(today.plusDays(1), p.dueDate)
+        val q = parser.parse("hist ch 5 read + qs 1-3 by mon")
+        assertEquals("History chapter 5 read + question 1-3", q.title)
+        assertEquals(DayOfWeek.MONDAY, q.dueDate?.dayOfWeek)
+    }
+
+    @Test
+    fun `german school shortcuts are expanded in german`() {
+        val p = parser.parse("D HA S.45 Nr 3-5 bis Do")
+        assertEquals("Deutsch-Hausaufgabe: Seite 45 Nr. 3-5", p.title)
+        assertEquals(DayOfWeek.THURSDAY, p.dueDate?.dayOfWeek)
+        assertTrue(p.details, p.details.startsWith("Seite 45 Nr. 3-5 für Deutsch."))
+        assertTrue(p.details, p.details.contains("Fällig am Donnerstag, "))
+        assertEquals("📚", p.emoji)
+    }
+
+    @Test
+    fun `more german shortcuts`() {
+        val p = parser.parse("Bio AB fertig machen bis Montag")
+        assertEquals("Biologie Arbeitsblatt fertig machen", p.title)
+        assertEquals(DayOfWeek.MONDAY, p.dueDate?.dayOfWeek)
+        val q = parser.parse("E Vok Unit 4 lernen bis Fr")
+        assertEquals("Englisch Vokabeln Unit 4 lernen", q.title)
+        assertEquals(DayOfWeek.FRIDAY, q.dueDate?.dayOfWeek)
+        val r = parser.parse("Ph Kap. 4 lesen und A 2 bis übermorgen um 18 Uhr")
+        assertEquals("Physik Kapitel 4 lesen und Aufgabe 2", r.title)
+        assertEquals(today.plusDays(2), r.dueDate)
+        assertEquals(LocalTime.of(18, 0), r.dueTime)
+        val s = parser.parse("M KA am 14.10.")
+        assertEquals("Mathe Klassenarbeit", s.title)
+        assertEquals(LocalDate.of(2026, 10, 14), s.dueDate)
+        assertEquals("📝", s.emoji)
+    }
+
+    @Test
+    fun `german routine wording`() {
+        val p = parser.parse("Tabletten jeden Morgen und Abend")
+        assertEquals(ReminderKind.ROUTINE, p.kind)
+        assertEquals(listOf(DayPart.MORNING, DayPart.EVENING), p.dayParts)
+        assertTrue(p.details, p.details.endsWith("Jeden Tag morgens und abends."))
+    }
+
+    @Test
+    fun `german input with homework words works too`() {
         val p = parser.parse("mathe hausaufgaben s.12 bis freitag")
         assertEquals(DayOfWeek.FRIDAY, p.dueDate?.dayOfWeek)
-        assertEquals("Mathe homework: page 12", p.title)
+        assertEquals("Mathe-Hausaufgabe: Seite 12", p.title)
     }
 
     @Test

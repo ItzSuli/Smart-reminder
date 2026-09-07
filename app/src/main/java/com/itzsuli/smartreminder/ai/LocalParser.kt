@@ -11,17 +11,31 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * Offline fallback for turning shorthand like "HW englisj read page 32 till teusday 10.10"
- * into something readable. It is deliberately forgiving: fuzzy weekday and subject matching,
- * abbreviation expansion, several date formats, English + German words.
+ * Offline fallback for turning shorthand like "HW englisj read page 32 till teusday 10.10" or
+ * "D HA S.45 Nr 3-5 bis Do" into something readable. It is deliberately forgiving: fuzzy weekday
+ * and subject matching, school shortcuts in German and English (T3, Nr, S., Kap., HA, AB, Vok…),
+ * subject codes (D, E, M, Bio, Ch, Ph, Ge, Ek, Ku, Mu…), several date formats.
  *
- * Claude does a much better job; this exists so the app works without an API key or network.
+ * The AI engines do a nicer job of wording; this exists so the app works without a key or network.
  */
 class LocalParser(
     private val dayFirst: Boolean = true,
     private val today: LocalDate = LocalDate.now(),
-    private val locale: Locale = Locale.getDefault(),
+    @Suppress("unused") private val locale: Locale = Locale.getDefault(),
 ) {
+
+    /** Words rendered in the note's language. */
+    private class Vocab(val german: Boolean) {
+        private val de = mapOf(
+            "homework" to "Hausaufgabe", "page" to "Seite", "number" to "Nr.", "task" to "Aufgabe", "chapter" to "Kapitel",
+            "exercise" to "Übung", "worksheet" to "Arbeitsblatt", "vocabulary" to "Vokabeln", "exam" to "Klassenarbeit",
+            "presentation" to "Referat", "summary" to "Zusammenfassung", "revision" to "Wiederholung", "report" to "Protokoll",
+            "solutions" to "Lösungen", "textbook" to "Buch", "workbook" to "Arbeitsheft", "notebook" to "Heft",
+            "hand-in" to "Abgabe", "essay" to "Aufsatz", "unit" to "Unit", "question" to "Frage", "questions" to "Fragen",
+            "reading" to "Lektüre", "project" to "Projekt", "appointment" to "Termin", "study" to "lernen", "read" to "lesen",
+        )
+        fun w(key: String): String = if (german) de[key] ?: key else key
+    }
 
     fun parse(raw: String): ParsedReminder {
         val text = raw.trim().replace(Regex("\\s+"), " ")
@@ -31,6 +45,9 @@ class LocalParser(
 
         val tokens = text.split(" ")
         val consumed = BooleanArray(tokens.size)
+        val german = detectGerman(tokens)
+        val vocab = Vocab(german)
+        val names = if (german) Locale.GERMAN else Locale.ENGLISH
         var date: LocalDate? = null
         var time: LocalTime? = null
         var routineHint = false
@@ -42,12 +59,11 @@ class LocalParser(
             val t = tok.trim(',', ';', '!', '(', ')')
             explicitDate(t)?.let { date = it; consumed[i] = true; return@forEachIndexed }
             explicitTime(t)?.let { time = it; consumed[i] = true; return@forEachIndexed }
-            // "10 am" / "5 pm" as two tokens
             if (i + 1 < tokens.size && t.matches(Regex("\\d{1,2}")) && norm(tokens[i + 1]) in setOf("am", "pm")) {
                 explicitTime(t + norm(tokens[i + 1]))?.let { time = it; consumed[i] = true; consumed[i + 1] = true }
             }
         }
-        // "at 10" / "um 15" / "@ 9"
+        // "at 10" / "um 15" / "um 15 Uhr" / "@ 9"
         tokens.forEachIndexed { i, tok ->
             if (consumed[i]) return@forEachIndexed
             if (norm(tok) in setOf("at", "um", "@") && i + 1 < tokens.size && !consumed[i + 1]) {
@@ -55,10 +71,15 @@ class LocalParser(
                 if (next.matches(Regex("\\d{1,2}")) && next.toInt() in 0..23 && time == null) {
                     time = LocalTime.of(next.toInt(), 0)
                     consumed[i] = true; consumed[i + 1] = true
+                    if (i + 2 < tokens.size && norm(tokens[i + 2]) in setOf("uhr", "h", "oclock", "o'clock")) consumed[i + 2] = true
                 } else if (next.matches(Regex("\\d{1,2}(:\\d{2})?(am|pm|h|uhr)?", RegexOption.IGNORE_CASE)) && time == null) {
                     explicitTime(next)?.let { time = it; consumed[i] = true; consumed[i + 1] = true }
                 }
             }
+        }
+        // "15:30 Uhr"
+        tokens.forEachIndexed { i, tok ->
+            if (norm(tok) == "uhr" && i > 0 && consumed[i - 1]) consumed[i] = true
         }
 
         // ---- pass 2: relative words, weekdays, routine hints ---------------------------------
@@ -68,7 +89,12 @@ class LocalParser(
             val prev = if (i > 0) norm(tokens[i - 1]) else ""
             val prev2 = if (i > 1) norm(tokens[i - 2]) else ""
             when {
-                n in setOf("today", "heute", "tonight") -> { date = date ?: today; consumed[i] = true }
+                n in setOf("today", "heute", "tonight", "heut") -> { date = date ?: today; consumed[i] = true }
+                // "jeden Morgen" / "am Morgen" is the morning, not tomorrow
+                n == "morgen" && (prev in setOf("jeden", "jede", "jeder", "am", "guten") || (tok.trim(',', '.') == "Morgen" && i > 0)) -> {
+                    dayParts += DayPart.MORNING; frequencyWords[i] = true
+                    if (prev.startsWith("jede")) routineHint = true
+                }
                 isTomorrow(n) -> {
                     if (prev == "after" && prev2 == "day") {
                         date = date ?: today.plusDays(2); consumed[i - 1] = true; consumed[i - 2] = true
@@ -79,24 +105,24 @@ class LocalParser(
                     consumed[i] = true
                 }
                 n in setOf("übermorgen", "uebermorgen", "overmorrow") -> { date = date ?: today.plusDays(2); consumed[i] = true }
-                n in setOf("week", "woche") && prev in setOf("next", "nächste", "naechste", "nächsten") -> {
+                n in setOf("week", "woche", "wk") && prev in setOf("next", "nächste", "naechste", "nächsten", "nxt") -> {
                     date = date ?: today.plusDays(7); consumed[i] = true; consumed[i - 1] = true
                 }
-                n in setOf("weekend", "wochenende") -> {
+                n in setOf("weekend", "wochenende", "wknd", "we") && (n != "we" || tok == "WE") -> {
                     date = date ?: nextWeekday(DayOfWeek.SATURDAY); consumed[i] = true
-                    if (prev in setOf("this", "next", "the", "am", "on")) consumed[i - 1] = true
+                    if (prev in setOf("this", "next", "the", "am", "on", "bis", "übers", "ubers")) consumed[i - 1] = true
                 }
-                n in setOf("days", "day", "tage", "tag", "weeks", "week", "wochen") && prev.matches(Regex("\\d{1,2}")) && prev2 == "in" -> {
+                n in setOf("days", "day", "tage", "tag", "tagen", "weeks", "week", "wochen", "wk") && prev.matches(Regex("\\d{1,2}")) && prev2 == "in" -> {
                     val amount = prev.toLong()
                     date = date ?: if (n.startsWith("w")) today.plusWeeks(amount) else today.plusDays(amount)
                     consumed[i] = true; consumed[i - 1] = true; consumed[i - 2] = true
                 }
                 else -> {
-                    val wd = weekday(n)
+                    val wd = weekday(n, tok, german)
                     if (wd != null) {
                         if (date == null) date = nextWeekday(wd)
                         consumed[i] = true
-                        if (prev in setOf("next", "this", "on", "am", "nächsten", "naechsten", "coming")) consumed[i - 1] = true
+                        if (prev in setOf("next", "this", "on", "am", "nächsten", "naechsten", "coming", "bis")) consumed[i - 1] = true
                     }
                 }
             }
@@ -105,14 +131,12 @@ class LocalParser(
             dayPartFor(n)?.let { dayParts += it; frequencyWords[i] = true }
         }
 
-        // "every"/"each"/"jeden" followed by a consumed frequency word → also a frequency word
         tokens.forEachIndexed { i, tok ->
             val n = norm(tok)
             if (n in setOf("every", "each", "jeden", "jede", "jedes", "per", "a", "in", "the", "at", "am", "vor", "nach", "before", "after", "with", "beim", "zum") &&
                 i + 1 < tokens.size && frequencyWords[i + 1]
             ) frequencyWords[i] = true
         }
-        // "every day", "each day", "jeden tag", "every night"
         tokens.forEachIndexed { i, tok ->
             val n = norm(tok)
             if (n in setOf("day", "tag", "night", "nacht") && i > 0 && norm(tokens[i - 1]) in setOf("every", "each", "jeden", "a", "per")) {
@@ -137,25 +161,31 @@ class LocalParser(
             else -> ReminderKind.DEADLINE
         }
 
-        // ---- expand + fuzzy-fix remaining words --------------------------------------------
+        // ---- expand shortcuts, subjects, homework words --------------------------------------
+        val schoolContext = tokens.any { isSchoolWord(it) }
         val rest = mutableListOf<String>()
         val restForTitle = mutableListOf<String>()
         var subject: String? = null
         var homework = false
         tokens.forEachIndexed { i, tok ->
             if (consumed[i]) return@forEachIndexed
-            val expanded = expand(tok, if (i + 1 < tokens.size) tokens[i + 1] else null)
-            val words = expanded.split(" ")
-            for (w in words) {
-                val n = norm(w)
-                val subj = subject(n)
-                val out = when {
-                    n in HOMEWORK_WORDS -> { homework = true; "homework" }
-                    subj != null -> { if (subject == null) subject = subj; subj }
-                    else -> w
-                }
-                rest += out
-                if (!(kind == ReminderKind.ROUTINE && frequencyWords[i])) restForTitle += out
+            val next = if (i + 1 < tokens.size && !consumed[i + 1]) tokens[i + 1] else null
+            val n = norm(tok)
+            if (n in HOMEWORK_WORDS || (n == "ha" && (german || tok == "HA"))) {
+                homework = true
+                rest += vocab.w("homework"); restForTitle += vocab.w("homework")
+                return@forEachIndexed
+            }
+            val subj = subjectFor(tok, n, german, schoolContext, next)
+            if (subj != null) {
+                if (subject == null) subject = subj
+                rest += subj; restForTitle += subj
+                return@forEachIndexed
+            }
+            val expanded = expand(tok, n, next, vocab, german)
+            for (w in expanded.split(" ")) {
+                rest += w
+                if (!(kind == ReminderKind.ROUTINE && frequencyWords[i])) restForTitle += w
             }
         }
 
@@ -163,34 +193,50 @@ class LocalParser(
         val clean = rest.joinToString(" ").trim().trim(',', '.', ';', '-').trim()
         val cleanTitle = restForTitle.joinToString(" ").trim().trim(',', '.', ';', '-').trim()
         val subjectName = subject
+        val hwWord = vocab.w("homework")
         val title: String
         val sentence: String
         if (homework) {
-            val core = wordsWithout(cleanTitle, listOf("homework", subjectName ?: ""))
-            title = when {
-                subjectName != null && core.isNotBlank() -> "$subjectName homework: $core"
-                subjectName != null -> "$subjectName homework"
-                core.isNotBlank() -> "Homework: $core"
-                else -> "Homework"
-            }
-            sentence = when {
-                subjectName != null && core.isNotBlank() -> "${cap(core)} for $subjectName homework."
-                subjectName != null -> "$subjectName homework."
-                core.isNotBlank() -> "${cap(core)} for homework."
-                else -> "Homework."
+            val core = wordsWithout(cleanTitle, listOf(hwWord, subjectName ?: ""))
+            if (german) {
+                title = when {
+                    subjectName != null && core.isNotBlank() -> "$subjectName-Hausaufgabe: $core"
+                    subjectName != null -> "$subjectName-Hausaufgabe"
+                    core.isNotBlank() -> "Hausaufgabe: $core"
+                    else -> "Hausaufgabe"
+                }
+                sentence = when {
+                    subjectName != null && core.isNotBlank() -> "${cap(core, names)} für $subjectName."
+                    subjectName != null -> "Hausaufgabe für $subjectName."
+                    core.isNotBlank() -> "${cap(core, names)} (Hausaufgabe)."
+                    else -> "Hausaufgabe."
+                }
+            } else {
+                title = when {
+                    subjectName != null && core.isNotBlank() -> "$subjectName homework: $core"
+                    subjectName != null -> "$subjectName homework"
+                    core.isNotBlank() -> "Homework: $core"
+                    else -> "Homework"
+                }
+                sentence = when {
+                    subjectName != null && core.isNotBlank() -> "${cap(core, names)} for $subjectName homework."
+                    subjectName != null -> "$subjectName homework."
+                    core.isNotBlank() -> "${cap(core, names)} for homework."
+                    else -> "Homework."
+                }
             }
         } else {
-            title = cap(cleanTitle.ifBlank { clean }.ifBlank { text })
-            sentence = cap(clean.ifBlank { text }).let { if (it.endsWith(".") || it.endsWith("!") || it.endsWith("?")) it else "$it." }
+            title = cap(cleanTitle.ifBlank { clean }.ifBlank { text }, names)
+            sentence = cap(clean.ifBlank { text }, names).let { if (it.endsWith(".") || it.endsWith("!") || it.endsWith("?")) it else "$it." }
         }
 
         val dueDate = date
         val details = buildString {
             append(sentence)
             if (kind == ReminderKind.DEADLINE && dueDate != null) {
-                append(" ").append(duePhrase(dueDate, time))
+                append(" ").append(duePhrase(dueDate, time, german, names))
             } else if (kind == ReminderKind.ROUTINE) {
-                append(" ").append(routinePhrase(dayParts.toList(), time))
+                append(" ").append(routinePhrase(dayParts.toList(), time, german))
             }
         }
 
@@ -198,7 +244,7 @@ class LocalParser(
             title = shorten(title),
             details = details,
             dueDate = if (kind == ReminderKind.DEADLINE) date else null,
-            dueTime = if (kind == ReminderKind.DEADLINE) time else null,
+            dueTime = time,
             kind = kind,
             emoji = emojiFor("$clean $text", kind),
             dayParts = if (kind == ReminderKind.ROUTINE) dayParts.toList() else emptyList(),
@@ -207,11 +253,27 @@ class LocalParser(
     }
 
     // ---------------------------------------------------------------------------------------
+    // language
+
+    private fun detectGerman(tokens: List<String>): Boolean {
+        var de = 0
+        var en = 0
+        for (tok in tokens) {
+            val n = norm(tok)
+            if (tok.matches(Regex("(Mo|Di|Mi|Do|Fr|Sa|So)\\.?")) && tok.length <= 3) { de++; continue }
+            if (n in GERMAN_MARKERS || n.matches(Regex("(s|nr|aufg|kap|üb)\\.?\\d+(-\\d+)?"))) de++
+            if (n in ENGLISH_MARKERS || n.matches(Regex("(p|pg|pp|ch|chap)\\.?\\d+(-\\d+)?"))) en++
+            if (n.any { it in "äöüß" }) de++
+        }
+        return de > en
+    }
+
+    // ---------------------------------------------------------------------------------------
     // helpers
 
-    private fun norm(t: String) = t.lowercase(Locale.ROOT).trim { !it.isLetterOrDigit() && it != '/' }
+    private fun norm(t: String) = t.lowercase(Locale.ROOT).trim { !it.isLetterOrDigit() && it != '/' && it != '#' }
 
-    private fun cap(s: String) = s.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase(locale) else it.toString() }
+    private fun cap(s: String, loc: Locale) = s.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase(loc) else it.toString() }
 
     private fun shorten(s: String, max: Int = 70): String {
         if (s.length <= max) return s
@@ -221,29 +283,45 @@ class LocalParser(
 
     private fun wordsWithout(text: String, drop: List<String>): String {
         val dropSet = drop.filter { it.isNotBlank() }.map { it.lowercase(Locale.ROOT) }.toSet()
-        return text.split(" ").filter { norm(it) !in dropSet }.joinToString(" ").trim().trim(',', '-', ':').trim()
+        return text.split(" ").filter { it.lowercase(Locale.ROOT).trim('.', ',') !in dropSet }.joinToString(" ").trim().trim(',', '-', ':').trim()
     }
 
-    private fun duePhrase(date: LocalDate, time: LocalTime?): String {
-        val dayText = when (date) {
-            today -> "today"
-            today.plusDays(1) -> "tomorrow"
-            else -> date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d", locale))
+    private fun duePhrase(date: LocalDate, time: LocalTime?, german: Boolean, loc: Locale): String {
+        val timeText = time?.format(DateTimeFormatter.ofPattern("HH:mm"))
+        return if (german) {
+            val dayText = when (date) {
+                today -> "heute"
+                today.plusDays(1) -> "morgen"
+                else -> "am " + date.format(DateTimeFormatter.ofPattern("EEEE, d. MMMM", loc))
+            }
+            "Fällig $dayText" + (timeText?.let { " um $it Uhr" } ?: "") + "."
+        } else {
+            val dayText = when (date) {
+                today -> "today"
+                today.plusDays(1) -> "tomorrow"
+                else -> date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d", loc))
+            }
+            "Due $dayText" + (timeText?.let { " at $it" } ?: "") + "."
         }
-        val timeText = time?.let { " at " + it.format(DateTimeFormatter.ofPattern("HH:mm")) } ?: ""
-        return "Due $dayText$timeText."
     }
 
-    private fun routinePhrase(parts: List<DayPart>, time: LocalTime?): String {
-        if (time != null) return "Every day at " + time.format(DateTimeFormatter.ofPattern("HH:mm")) + "."
+    private fun routinePhrase(parts: List<DayPart>, time: LocalTime?, german: Boolean): String {
+        val timeText = time?.format(DateTimeFormatter.ofPattern("HH:mm"))
+        if (german) {
+            if (timeText != null) return "Jeden Tag um $timeText Uhr."
+            if (parts.isEmpty()) return "Jeden Tag."
+            val names = parts.map { when (it) { DayPart.MORNING -> "morgens"; DayPart.MIDDAY -> "mittags"; DayPart.EVENING -> "abends" } }
+            return "Jeden Tag " + joinNatural(names, "und") + "."
+        }
+        if (timeText != null) return "Every day at $timeText."
         if (parts.isEmpty()) return "Every day."
-        val names = parts.map { it.label.lowercase(Locale.ROOT) }
-        val joined = when (names.size) {
-            1 -> names[0]
-            2 -> names[0] + " and " + names[1]
-            else -> names.dropLast(1).joinToString(", ") + " and " + names.last()
-        }
-        return "Every day in the $joined."
+        return "Every day in the " + joinNatural(parts.map { it.label.lowercase(Locale.ROOT) }, "and") + "."
+    }
+
+    private fun joinNatural(items: List<String>, and: String): String = when (items.size) {
+        1 -> items[0]
+        2 -> items[0] + " $and " + items[1]
+        else -> items.dropLast(1).joinToString(", ") + " $and " + items.last()
     }
 
     private fun explicitDate(t: String): LocalDate? {
@@ -258,7 +336,6 @@ class LocalParser(
         var month = if (dayFirst) b else a
         if (month !in 1..12 && day in 1..12) { val tmp = day; day = month; month = tmp }
         if (month !in 1..12 || day !in 1..31) return null
-        // "3.5" alone could be a decimal number; only accept it when it looks like a date
         if (yearRaw.isEmpty() && !t.contains('/') && !t.endsWith(".") && m.groupValues[1].length == 1 && m.groupValues[2].length == 1 && !dayFirst) return null
         val year = when {
             yearRaw.isEmpty() -> today.year
@@ -275,7 +352,6 @@ class LocalParser(
         var hour = m.groupValues[1].toInt()
         val minute = m.groupValues[2].ifEmpty { null }?.toInt() ?: 0
         val suffix = m.groupValues[3].lowercase(Locale.ROOT)
-        // a bare number is not a time ("page 32") – require a colon or a suffix
         if (m.groupValues[2].isEmpty() && suffix.isEmpty()) return null
         if (suffix == "pm" && hour < 12) hour += 12
         if (suffix == "am" && hour == 12) hour = 0
@@ -284,7 +360,7 @@ class LocalParser(
     }
 
     private fun isTomorrow(n: String): Boolean =
-        n in setOf("tomorrow", "tmrw", "tmr", "tmrrw", "morgen") || (n.length >= 6 && distance(n, "tomorrow") <= 2 && n.startsWith("to"))
+        n in setOf("tomorrow", "tmrw", "tmr", "tmrrw", "tmw", "morgen", "morgn") || (n.length >= 6 && distance(n, "tomorrow") <= 2 && n.startsWith("to"))
 
     private fun nextWeekday(target: DayOfWeek): LocalDate {
         var diff = (target.value - today.dayOfWeek.value + 7) % 7
@@ -292,8 +368,12 @@ class LocalParser(
         return today.plusDays(diff.toLong())
     }
 
-    private fun weekday(n: String): DayOfWeek? {
+    private fun weekday(n: String, original: String, german: Boolean): DayOfWeek? {
         WEEKDAY_EXACT[n]?.let { return it }
+        // German two-letter abbreviations: "Do", "Fr", "Mo" (capitalised, with or without dot)
+        if (german || original.endsWith(".")) {
+            GERMAN_SHORT[original.trimEnd('.', ',')]?.let { return it }
+        }
         if (n.length < 5) return null
         val threshold = if (n.length >= 8) 2 else 1
         var best: DayOfWeek? = null
@@ -305,42 +385,82 @@ class LocalParser(
         return if (bestDist <= threshold) best else null
     }
 
-    private fun subject(n: String): String? {
-        SUBJECT_EXACT[n]?.let { return it }
+    private fun subjectFor(original: String, n: String, german: Boolean, schoolContext: Boolean, next: String?): String? {
+        val bare = original.trim(',', ':', ';', '.', '-')
+        // "ch 5" / "Ch. 5" is a chapter, not chemistry
+        if (n in setOf("ch", "chap", "kap") && next != null && norm(next).matches(Regex("\\d+(-\\d+)?"))) return null
+        val entry = when {
+            bare.length == 1 && bare[0].isUpperCase() && schoolContext -> SUBJECT_BY_CODE[bare.lowercase(Locale.ROOT)]
+            bare == "IT" || bare == "CS" || bare == "PE" || bare == "DS" -> SUBJECT_BY_CODE[bare.lowercase(Locale.ROOT)]
+            n in setOf("it", "cs", "pe", "ds", "we", "al", "gl", "sk", "wi", "ma", "ge", "mu", "ku", "ek", "ka") ->
+                if (bare.length >= 2 && bare[0].isUpperCase() && (schoolContext || german)) SUBJECT_BY_CODE[n] else null
+            bare.length >= 2 -> SUBJECT_BY_CODE[n]
+            else -> null
+        } ?: fuzzySubject(n)
+        return entry?.let { if (german) it.de else it.en }
+    }
+
+    private fun fuzzySubject(n: String): Subject? {
         if (n.length < 5) return null
         val threshold = if (n.length >= 8) 2 else 1
-        var best: String? = null
+        var best: Subject? = null
         var bestDist = Int.MAX_VALUE
-        for ((name, canonical) in SUBJECT_FUZZY) {
+        for ((name, subject) in SUBJECT_BY_NAME) {
             val d = distance(n, name)
-            if (d < bestDist) { bestDist = d; best = canonical }
+            if (d < bestDist) { bestDist = d; best = subject }
         }
         return if (bestDist <= threshold) best else null
     }
 
+    private fun isSchoolWord(tok: String): Boolean {
+        val n = norm(tok)
+        if (n in SCHOOL_WORDS || n in HOMEWORK_WORDS) return true
+        if (n.matches(Regex("(s|p|pg|pp|nr|no|a|t|aufg|kap|ch|chap|üb|ü)\\.?\\d+(-\\d+)?"))) return true
+        if (tok == "HA" || tok == "AB" || tok == "KA") return true
+        return n.length >= 2 && SUBJECT_BY_CODE.containsKey(n) && n !in setOf("it", "we", "al", "ma", "ge", "ka")
+    }
+
     private fun dayPartFor(n: String): DayPart? = when (n) {
-        "morning", "mornings", "morgens", "früh", "frueh", "breakfast", "frühstück", "fruehstueck", "wakeup", "wake-up" -> DayPart.MORNING
-        "noon", "midday", "lunch", "lunchtime", "mittag", "mittags", "afternoon", "afternoons", "nachmittag", "nachmittags" -> DayPart.MIDDAY
+        "morning", "mornings", "morgens", "früh", "frueh", "breakfast", "frühstück", "fruehstueck", "wakeup", "wake-up", "vormittags", "vorm" -> DayPart.MORNING
+        "noon", "midday", "lunch", "lunchtime", "mittag", "mittags", "afternoon", "afternoons", "nachmittag", "nachmittags", "nachm" -> DayPart.MIDDAY
         "evening", "evenings", "abend", "abends", "dinner", "bed", "bedtime", "nachts", "night", "nights" -> DayPart.EVENING
         else -> null
     }
 
-    private fun expand(tok: String, next: String?): String {
-        val n = norm(tok)
-        ABBREVIATIONS[n]?.let { return it }
-        Regex("^(p|pg|pgs|s|seite)\\.?(\\d+)$").matchEntire(n)?.let { return "page " + it.groupValues[2] }
-        Regex("^(ch|chap|kap)\\.?(\\d+)$").matchEntire(n)?.let { return "chapter " + it.groupValues[2] }
-        Regex("^(ex|exc)\\.?(\\d+)$").matchEntire(n)?.let { return "exercise " + it.groupValues[2] }
-        Regex("^(q|qs|nr|no)\\.?(\\d+)$").matchEntire(n)?.let { return "number " + it.groupValues[2] }
-        val nextIsNumber = next != null && norm(next).matches(Regex("\\d+(-\\d+)?"))
+    /** Expands one token; may return several words. */
+    private fun expand(tok: String, n: String, next: String?, vocab: Vocab, german: Boolean): String {
+        val nextIsNumber = next != null && norm(next).matches(Regex("\\d+([-–]\\d+)?[a-z]?"))
+        val bare = tok.trim(',', ';', ':')
+
+        // attached forms: S.45, p32, Nr3, A3, T3, Kap.4, Ü2
+        Regex("^(s|p|pg|pp|seite|page)\\.?(\\d+(?:[-–]\\d+)?)$", RegexOption.IGNORE_CASE).matchEntire(bare)?.let { return vocab.w("page") + " " + it.groupValues[2] }
+        Regex("^(nr|no|nummer|number|#)\\.?(\\d+(?:[-–]\\d+)?)$", RegexOption.IGNORE_CASE).matchEntire(bare)?.let { return vocab.w("number") + " " + it.groupValues[2] }
+        Regex("^(a|t|aufg|aufgabe|task|ex|üb|ü|übung)\\.?(\\d+(?:[-–]\\d+)?[a-z]?)$", RegexOption.IGNORE_CASE).matchEntire(bare)?.let { return vocab.w("task") + " " + it.groupValues[2] }
+        Regex("^(kap|kapitel|ch|chap|chapter)\\.?(\\d+(?:[-–]\\d+)?)$", RegexOption.IGNORE_CASE).matchEntire(bare)?.let { return vocab.w("chapter") + " " + it.groupValues[2] }
+        Regex("^(q|qs|frage|fragen)\\.?(\\d+(?:[-–]\\d+)?)$", RegexOption.IGNORE_CASE).matchEntire(bare)?.let { return vocab.w("question") + " " + it.groupValues[2] }
+
+        // standalone shortcut followed by a number: "S. 45", "Nr. 3", "Aufg. 3", "T 3" (single letters only when capitalised)
         if (nextIsNumber) {
             when (n) {
-                "p", "pg", "pgs", "s", "seite", "seiten" -> return "page"
-                "ch", "chap", "kap" -> return "chapter"
-                "ex", "exc" -> return "exercise"
-                "q", "qs", "nr", "no" -> return "number"
+                "s", "seite", "seiten", "p", "pg", "pgs", "pp", "page", "pages" -> return vocab.w("page")
+                "nr", "no", "nummer", "number", "#" -> return vocab.w("number")
+                "aufg", "aufgabe", "aufgaben", "task", "tasks", "ex", "exc", "übung", "üb", "ü" -> return vocab.w("task")
+                "a", "t" -> if (bare == "A" || bare == "T" || german) return vocab.w("task")
+                "kap", "kapitel", "ch", "chap", "chapter" -> return vocab.w("chapter")
+                "q", "qs", "frage", "fragen", "question", "questions" -> return vocab.w("question")
             }
         }
+
+        // uppercase-only German shortcuts
+        when (bare) {
+            "AB" -> return vocab.w("worksheet")
+            "KA" -> return vocab.w("exam")
+            "LZK" -> return vocab.w("exam")
+            "TB" -> return vocab.w("textbook")
+            "WB" -> return vocab.w("workbook")
+        }
+
+        SHORTCUTS[n]?.let { return vocab.w(it) }
         return tok
     }
 
@@ -349,6 +469,8 @@ class LocalParser(
         for ((keys, emoji) in EMOJI_RULES) if (keys.any { t.contains(it) }) return emoji
         return if (kind == ReminderKind.ROUTINE) "🔁" else "📌"
     }
+
+    private class Subject(val en: String, val de: String, val codes: List<String>, val names: List<String>)
 
     companion object {
         /** Optimal string alignment (Damerau–Levenshtein) distance: typos and swapped letters cost 1. */
@@ -366,7 +488,7 @@ class LocalParser(
             return d[a.length][b.length]
         }
 
-        private val MARKERS = setOf("till", "until", "untill", "til", "by", "due", "deadline", "before", "bis", "zum", "on", "for", "at", "am", "the", "this", "next", "coming", "nächsten", "naechsten", "-", "–", "→", "->")
+        private val MARKERS = setOf("till", "until", "untill", "til", "by", "due", "deadline", "before", "bis", "zum", "on", "for", "at", "am", "the", "this", "next", "coming", "nächsten", "naechsten", "spätestens", "-", "–", "→", "->", "abgabe")
 
         private val WEEKDAY_FULL: Map<String, DayOfWeek> = mapOf(
             "monday" to DayOfWeek.MONDAY, "tuesday" to DayOfWeek.TUESDAY, "wednesday" to DayOfWeek.WEDNESDAY,
@@ -385,73 +507,127 @@ class LocalParser(
             "fr." to DayOfWeek.FRIDAY, "sa." to DayOfWeek.SATURDAY, "so." to DayOfWeek.SUNDAY,
         )
 
-        private val SUBJECT_FUZZY: Map<String, String> = mapOf(
-            "english" to "English", "german" to "German", "french" to "French", "spanish" to "Spanish", "italian" to "Italian",
-            "physics" to "Physics", "chemistry" to "Chemistry", "biology" to "Biology", "history" to "History",
-            "geography" to "Geography", "science" to "Science", "economics" to "Economics", "business" to "Business",
-            "philosophy" to "Philosophy", "religion" to "Religion", "politics" to "Politics", "sociology" to "Sociology",
-            "psychology" to "Psychology", "literature" to "Literature", "computing" to "Computing", "programming" to "Programming",
-            "informatics" to "Informatics", "mathematics" to "Maths", "statistics" to "Statistics", "geometry" to "Geometry",
-            "algebra" to "Algebra", "drama" to "Drama", "theatre" to "Theatre", "spanish" to "Spanish",
-            "deutsch" to "Deutsch", "englisch" to "Englisch", "französisch" to "Französisch", "franzoesisch" to "Französisch",
-            "spanisch" to "Spanisch", "physik" to "Physik", "chemie" to "Chemie", "biologie" to "Biologie",
-            "geschichte" to "Geschichte", "erdkunde" to "Erdkunde", "geographie" to "Geographie", "informatik" to "Informatik",
-            "latein" to "Latein", "wirtschaft" to "Wirtschaft", "philosophie" to "Philosophie", "sozialkunde" to "Sozialkunde",
+        private val GERMAN_SHORT: Map<String, DayOfWeek> = mapOf(
+            "Mo" to DayOfWeek.MONDAY, "Di" to DayOfWeek.TUESDAY, "Mi" to DayOfWeek.WEDNESDAY, "Do" to DayOfWeek.THURSDAY,
+            "Fr" to DayOfWeek.FRIDAY, "Sa" to DayOfWeek.SATURDAY, "So" to DayOfWeek.SUNDAY,
         )
 
-        private val SUBJECT_EXACT: Map<String, String> = SUBJECT_FUZZY + mapOf(
-            "math" to "Math", "maths" to "Maths", "mathe" to "Mathe", "art" to "Art", "music" to "Music", "musik" to "Musik",
-            "kunst" to "Kunst", "sport" to "Sport", "pe" to "PE", "gym" to "Gym", "latin" to "Latin", "bio" to "Biology",
-            "chem" to "Chemistry", "geo" to "Geography", "hist" to "History", "eng" to "English", "ethik" to "Ethik",
-            "politik" to "Politik", "it" to "IT", "cs" to "Computer Science", "ict" to "ICT", "eco" to "Economics",
+        private val SUBJECTS: List<Subject> = listOf(
+            Subject("English", "Englisch", listOf("e", "en", "eng", "engl"), listOf("english", "englisch")),
+            Subject("German", "Deutsch", listOf("d", "dt", "deu", "ger"), listOf("german", "deutsch")),
+            Subject("Math", "Mathe", listOf("m", "ma", "mathe", "math", "maths", "mathematik"), listOf("mathematics", "mathematik")),
+            Subject("French", "Französisch", listOf("f", "fr", "frz", "franz"), listOf("french", "französisch", "franzoesisch")),
+            Subject("Latin", "Latein", listOf("l", "lat", "latin", "latein"), listOf("latein")),
+            Subject("Spanish", "Spanisch", listOf("spa", "span", "spanish", "spanisch"), listOf("spanish", "spanisch")),
+            Subject("Italian", "Italienisch", listOf("ita", "ital", "italian", "italienisch"), listOf("italian", "italienisch")),
+            Subject("Biology", "Biologie", listOf("b", "bio", "biology", "biologie"), listOf("biology", "biologie")),
+            Subject("Chemistry", "Chemie", listOf("ch", "che", "chem", "chemie", "chemistry"), listOf("chemistry", "chemie")),
+            Subject("Physics", "Physik", listOf("ph", "phy", "phys", "physik", "physics"), listOf("physics", "physik")),
+            Subject("History", "Geschichte", listOf("g", "ge", "gesch", "hist", "history", "geschichte"), listOf("history", "geschichte")),
+            Subject("Geography", "Erdkunde", listOf("ek", "erd", "geo", "erdkunde", "geographie", "geography"), listOf("geography", "erdkunde", "geographie")),
+            Subject("Art", "Kunst", listOf("k", "ku", "kunst", "art"), listOf("kunst")),
+            Subject("Music", "Musik", listOf("mu", "mus", "musik", "music"), listOf("music", "musik")),
+            Subject("PE", "Sport", listOf("sp", "spo", "sport", "pe", "gym"), listOf("sport")),
+            Subject("Religion", "Religion", listOf("r", "rel", "reli", "religion"), listOf("religion")),
+            Subject("Ethics", "Ethik", listOf("eth", "ethik", "ethics"), listOf("ethics", "ethik")),
+            Subject("Politics", "Politik", listOf("pol", "powi", "sk", "sowi", "politik", "politics", "sozialkunde"), listOf("politics", "politik", "sozialkunde")),
+            Subject("Computer Science", "Informatik", listOf("inf", "info", "it", "cs", "ict", "informatik", "computing", "programming"), listOf("informatik", "computing", "programming", "informatics")),
+            Subject("Economics", "Wirtschaft", listOf("wi", "wipo", "wirtschaft", "eco", "econ", "economics", "business"), listOf("economics", "wirtschaft", "business")),
+            Subject("Science", "NaWi", listOf("nawi", "science", "naturwissenschaften"), listOf("science", "naturwissenschaften")),
+            Subject("Philosophy", "Philosophie", listOf("phil", "philo", "philosophie", "philosophy"), listOf("philosophy", "philosophie")),
+            Subject("Psychology", "Psychologie", listOf("psy", "psych", "psychologie", "psychology"), listOf("psychology", "psychologie")),
+            Subject("Pedagogy", "Pädagogik", listOf("päd", "paed", "pädagogik", "paedagogik"), listOf("pädagogik")),
+            Subject("Social studies", "Gesellschaftslehre", listOf("gl", "gesellschaftslehre"), listOf("gesellschaftslehre")),
+            Subject("Technology", "Technik", listOf("tech", "technik", "technology"), listOf("technology", "technik")),
+            Subject("Chinese", "Chinesisch", listOf("chin", "chinesisch", "chinese"), listOf("chinese", "chinesisch")),
+            Subject("Russian", "Russisch", listOf("russ", "russisch", "russian"), listOf("russian", "russisch")),
+            Subject("Greek", "Griechisch", listOf("griech", "griechisch", "greek"), listOf("griechisch")),
+            Subject("Drama", "Darstellendes Spiel", listOf("ds", "drama", "theater", "theatre"), listOf("drama", "theater", "theatre")),
+            Subject("Literature", "Literatur", listOf("lit", "literature", "literatur"), listOf("literature", "literatur")),
+            Subject("Statistics", "Statistik", listOf("stats", "statistics", "statistik"), listOf("statistics", "statistik")),
         )
 
-        private val HOMEWORK_WORDS = setOf("homework", "hw", "h/w", "hausaufgabe", "hausaufgaben", "hausi", "hausis", "homeworks", "hmwk")
+        private val SUBJECT_BY_CODE: Map<String, Subject> = buildMap { SUBJECTS.forEach { s -> s.codes.forEach { put(it, s) } } }
+        private val SUBJECT_BY_NAME: Map<String, Subject> = buildMap { SUBJECTS.forEach { s -> s.names.forEach { put(it, s) } } }
 
-        private val ABBREVIATIONS: Map<String, String> = mapOf(
-            "hw" to "homework", "h/w" to "homework", "hmwk" to "homework", "hausaufgabe" to "homework", "hausaufgaben" to "homework",
-            "asap" to "as soon as possible", "w/" to "with", "w/o" to "without", "b4" to "before", "appt" to "appointment",
-            "ppt" to "presentation", "pres" to "presentation", "tb" to "textbook", "wb" to "workbook", "vocab" to "vocabulary",
-            "assgn" to "assignment", "proj" to "project", "msg" to "message", "ppl" to "people", "bday" to "birthday",
-            "bc" to "because", "u" to "you", "ur" to "your", "pls" to "please", "plz" to "please", "thx" to "thanks",
-            "prep" to "prepare", "rdg" to "reading", "rd" to "read", "wrt" to "write", "ex" to "exercise", "exs" to "exercises",
-            "qs" to "questions", "hr" to "hour", "hrs" to "hours", "min" to "minutes", "mins" to "minutes",
+        private val HOMEWORK_WORDS = setOf("homework", "hw", "h/w", "hmwk", "hausaufgabe", "hausaufgaben", "hausi", "hausis", "homeworks", "hausis", "hausaufg")
+
+        /** lowercase token → vocabulary key (rendered in the note's language). */
+        private val SHORTCUTS: Map<String, String> = mapOf(
+            "vok" to "vocabulary", "vokabeln" to "vocabulary", "vocab" to "vocabulary", "vocabs" to "vocabulary", "voc" to "vocabulary",
+            "klausur" to "exam", "klassenarbeit" to "exam", "schulaufgabe" to "exam", "lzk" to "exam", "exam" to "exam", "prüfung" to "exam", "pruefung" to "exam",
+            "ref" to "presentation", "referat" to "presentation", "präsi" to "presentation", "praesi" to "presentation", "präsentation" to "presentation",
+            "ppt" to "presentation", "pres" to "presentation", "presentation" to "presentation",
+            "zsf" to "summary", "zsmf" to "summary", "zusammenfassung" to "summary", "summary" to "summary",
+            "wdh" to "revision", "wiederholung" to "revision", "revision" to "revision",
+            "prot" to "report", "protokoll" to "report",
+            "lös" to "solutions", "loes" to "solutions", "lösung" to "solutions", "lösungen" to "solutions", "loesungen" to "solutions",
+            "arbeitsblatt" to "worksheet", "worksheet" to "worksheet", "arbeitsheft" to "workbook", "textbook" to "textbook", "workbook" to "workbook",
+            "abg" to "hand-in", "abgabe" to "hand-in", "essay" to "essay", "aufsatz" to "essay", "erörterung" to "essay",
+            "lektüre" to "reading", "lektuere" to "reading", "proj" to "project", "projekt" to "project", "appt" to "appointment", "termin" to "appointment",
+            "asap" to "as soon as possible", "w/" to "with", "w/o" to "without", "b4" to "before", "bday" to "birthday", "msg" to "message",
+            "pls" to "please", "plz" to "please", "thx" to "thanks", "prep" to "prepare", "rdg" to "reading", "rd" to "read", "wrt" to "write",
+            "ex" to "exercise", "exs" to "exercises", "hr" to "hour", "hrs" to "hours", "min" to "minutes", "mins" to "minutes", "std" to "hours",
             "vit" to "vitamin", "vits" to "vitamins", "meds" to "medication", "supps" to "supplements",
-            "klausur" to "exam", "prüfung" to "exam", "pruefung" to "exam", "arbeit" to "test", "referat" to "presentation",
-            "lernen" to "study", "lesen" to "read", "abgabe" to "hand-in",
+            "lernen" to "study", "lesen" to "read", "üben" to "practise", "abschreiben" to "copy", "ausfüllen" to "fill in", "bearbeiten" to "work on",
+            "unit" to "unit", "übung" to "exercise", "übungen" to "exercises",
         )
 
-        private val ROUTINE_WORDS = setOf("every", "daily", "everyday", "each", "täglich", "taeglich", "jeden", "jede", "jedes", "always", "routine", "regularly")
+        private val SCHOOL_WORDS: Set<String> = HOMEWORK_WORDS + setOf(
+            "page", "pages", "seite", "seiten", "nr", "nummer", "number", "task", "tasks", "aufgabe", "aufgaben", "aufg", "kapitel", "kap", "chapter",
+            "exercise", "exercises", "übung", "übungen", "vok", "vokabeln", "vocab", "klausur", "klassenarbeit", "exam", "test", "referat", "präsi",
+            "arbeitsblatt", "worksheet", "lernen", "lesen", "study", "read", "essay", "aufsatz", "zsf", "zusammenfassung", "unit", "lektion", "lesson",
+            "abgabe", "hausi", "schule", "school", "lehrer", "teacher", "unterricht", "stunde", "fach",
+        )
+
+        private val GERMAN_MARKERS = setOf(
+            "bis", "und", "für", "fuer", "um", "heute", "morgen", "übermorgen", "nächste", "naechste", "nächsten", "woche", "lesen", "lernen", "machen",
+            "schreiben", "üben", "wiederholen", "abgeben", "fertig", "ha", "hausaufgabe", "hausaufgaben", "hausi", "seite", "aufgabe", "aufgaben", "aufg",
+            "nr", "nummer", "kapitel", "kap", "klausur", "klassenarbeit", "ka", "arbeit", "referat", "präsi", "vok", "vokabeln", "deutsch", "mathe", "englisch",
+            "physik", "chemie", "geschichte", "erdkunde", "kunst", "musik", "latein", "biologie", "informatik", "uhr", "montag", "dienstag", "mittwoch",
+            "donnerstag", "freitag", "samstag", "sonntag", "jeden", "täglich", "abends", "morgens", "mittags", "mit", "das", "der", "die", "ein", "eine",
+            "zum", "zur", "noch", "auch", "bitte", "mal", "nicht", "abgabe", "lösung", "lösungen", "zsf", "wdh", "termin", "arzt", "zahnarzt", "einkaufen",
+            "anrufen", "vorbereiten", "tabletten", "wasser", "trinken",
+        )
+
+        private val ENGLISH_MARKERS = setOf(
+            "till", "until", "by", "due", "homework", "hw", "page", "pages", "read", "study", "tomorrow", "tmrw", "next", "week", "math", "english", "exam",
+            "test", "for", "the", "and", "with", "finish", "write", "learn", "every", "daily", "monday", "tuesday", "wednesday", "thursday", "friday",
+            "saturday", "sunday", "mon", "tue", "wed", "thu", "fri", "sat", "sun", "chapter", "task", "number", "questions", "essay", "call", "buy",
+            "prepare", "water", "drink", "vitamin", "pills", "dentist", "doctor", "meeting", "at",
+        )
+
+        private val ROUTINE_WORDS = setOf("every", "daily", "everyday", "each", "täglich", "taeglich", "jeden", "jede", "jedes", "always", "routine", "regularly", "immer")
 
         private val ROUTINE_NOUNS = setOf(
             "vitamin", "vitamins", "supplement", "supplements", "supps", "pill", "pills", "meds", "medication", "medicine", "tablet", "tablets",
             "creatine", "protein", "omega", "magnesium", "zinc", "iron", "melatonin", "probiotic", "probiotics", "collagen", "d3", "b12",
             "water", "stretch", "stretching", "workout", "meditate", "meditation", "journal", "practice", "practise", "walk",
-            "floss", "skincare", "sunscreen", "posture", "eyedrops", "inhaler", "insulin", "tabletten", "medikament", "medikamente",
+            "floss", "skincare", "sunscreen", "posture", "eyedrops", "inhaler", "insulin", "tabletten", "medikament", "medikamente", "wasser",
         )
 
         private val EMOJI_RULES: List<Pair<List<String>, String>> = listOf(
             listOf("vitamin", "supplement", "pill", "tablet", "medic", "meds", "creatine", "protein", "omega", "magnesium", "zinc", "iron", "melatonin", "probiotic", "collagen", "inhaler", "insulin") to "💊",
-            listOf("water", "drink", "hydrat") to "💧",
-            listOf("exam", "test", "quiz", "klausur", "prüfung") to "📝",
-            listOf("homework", "read", "page", "chapter", "book", "study", "learn", "essay", "vocab") to "📚",
+            listOf("water", "drink", "hydrat", "wasser", "trink") to "💧",
+            listOf("exam", "test", "quiz", "klausur", "prüfung", "klassenarbeit", "lzk") to "📝",
+            listOf("homework", "hausaufgabe", "read", "lesen", "page", "seite", "chapter", "kapitel", "book", "study", "lernen", "learn", "essay", "vocab", "vokabeln", "aufgabe", "task", "übung") to "📚",
             listOf("gym", "workout", "run", "jog", "train", "stretch", "sport", "exercise", "walk", "yoga") to "🏃",
             listOf("meditat", "breath", "journal", "sleep", "bed") to "🧘",
-            listOf("call", "phone", "ring") to "📞",
-            listOf("mail", "email", "message", "text", "reply", "write") to "✉️",
-            listOf("buy", "shop", "grocer", "order", "pick up", "pickup") to "🛒",
-            listOf("pay", "bill", "rent", "invoice", "money", "bank", "transfer") to "💳",
+            listOf("call", "phone", "ring", "anrufen") to "📞",
+            listOf("mail", "email", "message", "text", "reply", "write", "schreiben") to "✉️",
+            listOf("buy", "shop", "grocer", "order", "pick up", "pickup", "einkaufen", "kaufen") to "🛒",
+            listOf("pay", "bill", "rent", "invoice", "money", "bank", "transfer", "zahlen", "überweisen") to "💳",
             listOf("meeting", "meet", "appointment", "termin", "interview") to "📅",
-            listOf("birthday", "bday", "party", "gift", "present") to "🎂",
-            listOf("clean", "laundry", "wash", "dishes", "tidy", "vacuum", "trash", "garbage") to "🧹",
-            listOf("cook", "dinner", "lunch", "breakfast", "meal", "food", "eat") to "🍳",
-            listOf("doctor", "dentist", "arzt", "clinic", "hospital", "checkup", "check-up") to "🩺",
-            listOf("presentation", "present", "slides", "talk", "speech", "referat") to "🎤",
-            listOf("project", "code", "build", "deploy", "fix", "bug", "commit") to "💻",
-            listOf("plant", "garden", "flower") to "🪴",
-            listOf("brush", "floss", "teeth", "skincare", "sunscreen", "shower") to "🪥",
-            listOf("dog", "cat", "pet", "feed") to "🐾",
-            listOf("travel", "flight", "train", "trip", "pack", "hotel", "ticket") to "✈️",
+            listOf("birthday", "bday", "party", "gift", "present", "geburtstag", "geschenk") to "🎂",
+            listOf("clean", "laundry", "wash", "dishes", "tidy", "vacuum", "trash", "garbage", "putzen", "wäsche", "müll", "aufräumen") to "🧹",
+            listOf("cook", "dinner", "lunch", "breakfast", "meal", "food", "eat", "kochen", "essen") to "🍳",
+            listOf("doctor", "dentist", "arzt", "zahnarzt", "clinic", "hospital", "checkup", "check-up") to "🩺",
+            listOf("presentation", "present", "slides", "talk", "speech", "referat", "präsi", "vortrag") to "🎤",
+            listOf("project", "code", "build", "deploy", "fix", "bug", "commit", "projekt") to "💻",
+            listOf("plant", "garden", "flower", "pflanze", "gießen") to "🪴",
+            listOf("brush", "floss", "teeth", "skincare", "sunscreen", "shower", "zähne") to "🪥",
+            listOf("dog", "cat", "pet", "feed", "hund", "katze", "füttern") to "🐾",
+            listOf("travel", "flight", "train", "trip", "pack", "hotel", "ticket", "reise", "zug", "flug", "packen") to "✈️",
         )
     }
 }

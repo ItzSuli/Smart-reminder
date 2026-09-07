@@ -65,6 +65,25 @@ Leave the engine on **Automatic**. If your phone ever supports Gemini Nano (the 
 
 Only the text of the note you're cleaning up is sent to Google. The key is stored on your phone only.
 
+## Shortcuts it understands
+
+Write the way you'd write in your planner. German, English, or both in one line.
+
+| You type | It reads |
+|---|---|
+| `D HA S.45 Nr 3-5 bis Do` | Deutsch-Hausaufgabe: Seite 45 Nr. 3–5 · Fällig am Donnerstag |
+| `M T3 p32 till tmrw` | Math: task 3 on page 32 · Due tomorrow |
+| `E Vok Unit 4 lernen bis Fr` | Englisch Vokabeln Unit 4 lernen · Fällig am Freitag |
+| `Ph Kap. 4 lesen und A 2 bis übermorgen um 18 Uhr` | Physik Kapitel 4 lesen und Aufgabe 2 · übermorgen 18:00 |
+| `Bio AB fertig machen bis Montag` | Biologie Arbeitsblatt fertig machen · Montag |
+| `M KA am 14.10.` | Mathe Klassenarbeit · 14. Oktober |
+
+- **Subjects:** D, E, M, F, L, Spa, Bio, Ch, Ph, Ge/Gesch/Hist, Ek/Geo, Ku, Mu, Sp/Spo/PE, Rel, Eth, Pol/PoWi/Sk, Inf/IT/CS, Wi/WiPo/Eco, NaWi, Phil, Psy, Päd, GL, Tech, Chin, Russ, Griech, DS, Lit … plus full names with typos (`englisj`, `chemestry`).
+- **Work:** HA/Hausi/HW, AB, S./p./pg, Nr./No./#, A3/T3/Aufg. 3/Ü2, `Nr 3-5`, Kap./Ch., Vok/vocab, KA/Klausur/LZK/Ex/exam, Ref/Präsi/PPT, Abg., Zsf, Wdh, Lös., TB/WB, lernen/lesen/üben/ausfüllen/bearbeiten/fertig machen.
+- **Time:** bis, spätestens, Mo/Di/Mi/Do/Fr/Sa/So, mon/tue/…, heute/morgen/übermorgen, tmrw, nächste Woche/nxt wk, in 3 Tagen, um 15 Uhr, 5pm, WE/Wochenende/wknd, 10.10, 14.10.2026, täglich/jeden Tag/daily, morgens/abends.
+
+Single letters like `D`, `E`, `M` count as subjects only when the note is clearly about school work, so "do it by friday" stays what it is.
+
 ## How reminding works (spoiler-free)
 
 | You choose | The app does |

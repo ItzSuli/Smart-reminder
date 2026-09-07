@@ -60,6 +60,14 @@ jobs:
 
       # Pushing a tag like v1.2.0 (or running this workflow by hand with a release_tag)
       # publishes a GitHub Release with the APK attached.
+      - name: Release notes from CHANGELOG.md
+        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
+        run: |
+          tag="${{ github.event.inputs.release_tag || github.ref_name }}"
+          awk -v tag="$tag" '/^## /{p = ($2 == tag)} p && !/^## /' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then echo "Smart Reminder $tag" > release-notes.md; fi
+          cat release-notes.md
+
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
         uses: softprops/action-gh-release@v2
@@ -67,5 +75,5 @@ jobs:
           tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
           target_commitish: ${{ github.sha }}
           name: Smart Reminder ${{ github.event.inputs.release_tag || github.ref_name }}
+          body_path: release-notes.md
           files: SmartReminder.apk
-          generate_release_notes: true

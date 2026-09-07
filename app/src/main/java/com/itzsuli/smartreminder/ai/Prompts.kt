@@ -26,6 +26,14 @@ import java.util.Locale
 /** Prompt text and JSON handling shared by every AI engine. */
 object Prompts {
 
+    /** Shortcuts the user mixes into notes, in German and English. Shared by every engine. */
+    const val GLOSSARY = """
+Shortcut glossary (the user writes in German, English or a mix; expand every shortcut, never leave it as-is):
+- Subjects: D/Dt/Deu = Deutsch (German) · E/En/Eng/Engl = Englisch (English) · M/Ma/Mathe = Mathe (Math) · F/Frz/Franz = Französisch (French) · L/Lat = Latein (Latin) · Spa/Span = Spanisch (Spanish) · Ita = Italienisch (Italian) · B/Bio = Biologie (Biology) · Ch/Che/Chem = Chemie (Chemistry) · Ph/Phy/Phys = Physik (Physics) · G/Ge/Gesch/Hist = Geschichte (History) · Ek/Erd/Geo = Erdkunde/Geographie (Geography) · K/Ku = Kunst (Art) · Mu/Mus = Musik (Music) · Sp/Spo/Sport/PE = Sport (PE) · R/Rel/Reli = Religion · Eth = Ethik (Ethics) · Pol/PoWi/Sk/SoWi = Politik/Sozialkunde (Politics) · Inf/Info/IT/CS = Informatik (Computer Science) · Wi/WiPo/Eco = Wirtschaft (Economics) · NaWi = Naturwissenschaften (Science) · Phil/Philo = Philosophie · Psy = Psychologie · Päd = Pädagogik · GL = Gesellschaftslehre · Tech = Technik · Chin = Chinesisch · Russ = Russisch · Griech = Griechisch · DS = Darstellendes Spiel (Drama) · Lit = Literatur · Stats = Statistik. Single letters (D, E, M, F, L, B, G, K, R) are subject codes only when the note is clearly about school work.
+- School work: HA/Hausi/HW/h/w = Hausaufgabe(n) (homework) · AB = Arbeitsblatt (worksheet) · S./S/Seite/p./p/pg/pp = Seite (page), e.g. "S.45" or "p32" · Nr./Nr/No./#/Nummer = Nummer (number) · A/Aufg./Aufgabe/T/Task/Ex/Ü/Üb/Übung = Aufgabe (task/exercise), so "A3", "T3", "Aufg. 3", "Nr. 3" all mean task 3 · "Nr 3-5" = tasks 3 to 5 · Kap./Kap/Ch./Chap = Kapitel (chapter) · Vok/Vokabeln/Vocab = Vokabeln (vocabulary) · KA/Klassenarbeit/Klausur/Schulaufgabe/LZK/Ex/Exam/Test = Klassenarbeit (exam/test) · Ref/Referat/Präsi/Präsentation/PPT/Pres = Referat (presentation) · Abg./Abgabe = Abgabe (hand-in) · Prot/Protokoll = Protokoll (report) · Zsf/Zsmf = Zusammenfassung (summary) · Wdh = Wiederholung (revision) · Lös. = Lösungen (solutions) · TB = Textbook · WB = Workbook · Heft = notebook · Unit/Lektion = unit/lesson · lernen = study · lesen = read · abschreiben = copy · ausfüllen = fill in · bearbeiten = work on · fertig machen = finish · vorbereiten = prepare · üben = practise.
+- Time: bis = until/by · spätestens = at the latest · Mo/Di/Mi/Do/Fr/Sa/So = Montag…Sonntag · heute = today · morgen = tomorrow · übermorgen = day after tomorrow · nächste Woche = next week · in 3 Tagen = in 3 days · um 15 Uhr = at 15:00 · WE/Wochenende/wknd = weekend · tmrw/tmr = tomorrow · nxt wk = next week · eod = end of day · asap · vorm./nachm./abends = morning/afternoon/evening · täglich/jeden Tag/daily = every day.
+"""
+
     fun cloudSystem(now: ZonedDateTime, dateOrder: DateOrder): String {
         val dayText = now.format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.ENGLISH))
         val iso = now.toLocalDate().toString()
@@ -34,22 +42,43 @@ object Prompts {
             DateOrder.DAY_FIRST -> "day.month (so 10.10 means October 10 and 3.5 means May 3)"
             DateOrder.MONTH_FIRST -> "month/day (so 10/12 means October 12)"
         }
+        val thursday = nextWeekday(now.toLocalDate(), java.time.DayOfWeek.THURSDAY)
+        val tomorrow = now.toLocalDate().plusDays(1)
+        val thursdayDe = thursday.format(DateTimeFormatter.ofPattern("EEEE, d. MMMM", Locale.GERMAN))
+        val tomorrowEn = tomorrow.format(DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.ENGLISH))
         return """
-            You turn quick, messy notes into clear reminders for a personal reminder app. Notes arrive with typos, abbreviations and sometimes mixed languages, for example "HW englisj read page 32 till teusday 10.10".
+            You turn quick, messy notes into clear reminders for a personal reminder app. Notes arrive with typos, abbreviations, school shortcuts and sometimes mixed German and English, for example "HW englisj read page 32 till teusday 10.10" or "D HA S.45 Nr 3-5 bis Do".
 
             Context: today is $dayText (ISO $iso). Local time is $time, time zone ${now.zone.id}. The user writes numeric dates as $order.
 
+            $GLOSSARY
+            Language: write title and details in the language the note is mostly written in. A German note gets German output with proper German words (Hausaufgabe, Seite, Nummer, Aufgabe, Kapitel, Klassenarbeit, "Fällig am Donnerstag, 11. September"). An English note gets English output ("Due Thursday, September 11"). Never mix languages inside one reminder unless the note itself is a mix of both.
+
             Fill the JSON fields like this:
-            - title: short and specific, at most 8 words, no trailing period. Fix typos and expand abbreviations (HW = homework, pg = page, ch = chapter). For school work put the subject first, e.g. "English homework: read page 32". Keep the language of the note.
-            - details: one or two friendly, complete sentences that keep every piece of information from the note. Mention the due date in words, month name first, when there is one, e.g. "Read page 32 for English. Due Saturday, October 10."
-            - due_date: ISO yyyy-mm-dd, or "" when the note has no date. A weekday name means its next occurrence. If both a weekday and a numeric date are present, the numeric date wins. A numeric date without a year is this year, or next year if that day already passed.
-            - due_time: 24-hour HH:MM, or "" when no time is given.
+            - title: short and specific, at most 8 words, no trailing period. Fix typos and expand every shortcut from the glossary. For school work put the subject first, e.g. "English homework: read page 32" or "Deutsch-Hausaufgabe: Seite 45 Nr. 3–5".
+            - details: one or two friendly, complete sentences that keep every piece of information from the note (page, task numbers, chapter, what to do). Mention the due date in words when there is one: English month first ("Due Saturday, October 10 at 14:00"), German the natural way ("Fällig am Samstag, 10. Oktober um 14:00 Uhr").
+            - due_date: ISO yyyy-mm-dd, or "" when the note has no date. A weekday name or abbreviation (Do, Fr, mon, tues…) means its next occurrence. If both a weekday and a numeric date are present, the numeric date wins. A numeric date without a year is this year, or next year if that day already passed.
+            - due_time: 24-hour HH:MM, or "" when no time is given ("um 15 Uhr" → "15:00", "5pm" → "17:00").
             - kind: "deadline" for anything that is done once (homework, exams, appointments, errands, calls). "routine" for things repeated every day or regularly (supplements, medication, habits, practice, drinking water).
             - day_parts: for routines only, when the note says when in the day it happens: any of "morning", "midday", "evening". Otherwise an empty list.
             - emoji: exactly one emoji that fits the reminder.
 
+            Examples (today's dates already applied):
+            Note: "D HA S.45 Nr 3-5 bis Do"
+            → {"title": "Deutsch-Hausaufgabe: Seite 45 Nr. 3–5", "details": "Auf Seite 45 die Aufgaben 3 bis 5 für Deutsch bearbeiten. Fällig am $thursdayDe.", "due_date": "$thursday", "due_time": "", "kind": "deadline", "day_parts": [], "emoji": "📚"}
+            Note: "M T3 p32 till tmrw"
+            → {"title": "Math: task 3 on page 32", "details": "Do task 3 on page 32 for Math. Due $tomorrowEn.", "due_date": "$tomorrow", "due_time": "", "kind": "deadline", "day_parts": [], "emoji": "📐"}
+            Note: "Vit D jeden morgen"
+            → {"title": "Vitamin D", "details": "Jeden Morgen Vitamin D nehmen.", "due_date": "", "due_time": "", "kind": "routine", "day_parts": ["morning"], "emoji": "💊"}
+
             Never invent dates, times or details that are not in the note.
         """.trimIndent()
+    }
+
+    private fun nextWeekday(from: LocalDate, target: java.time.DayOfWeek): LocalDate {
+        var diff = (target.value - from.dayOfWeek.value + 7) % 7
+        if (diff == 0) diff = 7
+        return from.plusDays(diff.toLong())
     }
 
     /** Compact prompt for the small on-device model. Dates come from the offline parser, so the model only rewrites text. */
@@ -61,17 +90,21 @@ object Prompts {
             if (hints.dayParts.isNotEmpty()) add("part of day: " + hints.dayParts.joinToString(", ") { it.label.lowercase(Locale.ROOT) })
         }
         return """
-            Rewrite a messy reminder note into a clean reminder. Fix typos, expand abbreviations (HW = homework, pg = page, ch = chapter, tmrw = tomorrow). Keep the language of the note. Do not add information that is not in the note.
+            Rewrite a messy reminder note into a clean reminder. Fix typos and expand shortcuts. Keep the language of the note (German note → German output, English note → English output). Do not add information that is not in the note.
+
+            Shortcuts: HA/HW = Hausaufgabe/homework, S./p. = Seite/page, Nr. = Nummer/number, A3/T3/Aufg. 3 = Aufgabe 3/task 3, Kap./Ch. = Kapitel/chapter, AB = Arbeitsblatt, Vok = Vokabeln, KA/Klausur = Klassenarbeit/exam, Ref/Präsi = Referat/presentation. Subjects: D = Deutsch, E = Englisch/English, M = Mathe/Math, F = Französisch, L = Latein, Bio = Biologie, Ch = Chemie, Ph = Physik, Ge = Geschichte, Ek = Erdkunde, Ku = Kunst, Mu = Musik, Sp = Sport, Inf = Informatik.
 
             Known facts about this note (use them exactly, do not change them): ${facts.joinToString(" | ")}
 
             Note: "${input.trim()}"
 
             Reply with only a JSON object in this exact shape and nothing else:
-            {"title": "short specific title, at most 8 words, subject first for school work", "details": "one or two friendly complete sentences, mention the due date in words (month name first) if there is one", "emoji": "one fitting emoji"}
+            {"title": "short specific title, at most 8 words, subject first for school work", "details": "one or two friendly complete sentences, mention the due date in words if there is one", "emoji": "one fitting emoji"}
 
             Example. Note: "HW englisj read page 32 till teusday 10.10" with due date Saturday, October 10
             {"title": "English homework: read page 32", "details": "Read page 32 for English. Due Saturday, October 10.", "emoji": "📚"}
+            Example. Note: "D HA S.45 Nr 3-5 bis Do" with due date Thursday, September 11
+            {"title": "Deutsch-Hausaufgabe: Seite 45 Nr. 3–5", "details": "Auf Seite 45 die Aufgaben 3 bis 5 für Deutsch bearbeiten. Fällig am Donnerstag, 11. September.", "emoji": "📚"}
         """.trimIndent()
     }
 
