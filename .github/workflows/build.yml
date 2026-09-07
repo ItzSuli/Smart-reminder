@@ -7,6 +7,11 @@ on:
     paths-ignore:
       - "**.md"
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Publish a GitHub Release with this tag (e.g. v1.0.0). Leave empty to only build."
+        required: false
+        default: ""
 
 jobs:
   build:
@@ -53,10 +58,14 @@ jobs:
           name: SmartReminder-apk
           path: SmartReminder.apk
 
-      # Pushing a tag like v1.2.0 publishes a GitHub Release with the APK attached.
+      # Pushing a tag like v1.2.0 (or running this workflow by hand with a release_tag)
+      # publishes a GitHub Release with the APK attached.
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: Smart Reminder ${{ github.event.inputs.release_tag || github.ref_name }}
           files: SmartReminder.apk
           generate_release_notes: true
