@@ -88,7 +88,7 @@ data class DueLabel(val text: String, val urgency: Urgency)
 
 fun dueLabel(date: LocalDate, time: LocalTime?, today: LocalDate = LocalDate.now()): DueLabel {
     val days = ChronoUnit.DAYS.between(today, date)
-    val short = date.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault()))
+    val short = date.format(DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault()))
     val timeText = time?.let { " " + it.format(DateTimeFormatter.ofPattern("HH:mm")) } ?: ""
     return when {
         days < 0 -> DueLabel("Overdue · $short", Urgency.OVERDUE)
@@ -201,5 +201,5 @@ fun TimePickerSheet(initial: LocalTime?, onDismiss: () -> Unit, onPick: (LocalTi
 }
 
 fun LocalTime.hhmm(): String = format(DateTimeFormatter.ofPattern("HH:mm"))
-fun LocalDate.pretty(): String = format(DateTimeFormatter.ofPattern("EEE, d MMM yyyy", Locale.getDefault()))
+fun LocalDate.pretty(): String = format(DateTimeFormatter.ofPattern("EEE, MMM d, yyyy", Locale.getDefault()))
 fun minutesToHhmm(minutes: Int): String = "%02d:%02d".format(minutes / 60, minutes % 60)

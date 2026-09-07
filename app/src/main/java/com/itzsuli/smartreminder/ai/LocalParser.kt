@@ -228,7 +228,7 @@ class LocalParser(
         val dayText = when (date) {
             today -> "today"
             today.plusDays(1) -> "tomorrow"
-            else -> date.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", locale))
+            else -> date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d", locale))
         }
         val timeText = time?.let { " at " + it.format(DateTimeFormatter.ofPattern("HH:mm")) } ?: ""
         return "Due $dayText$timeText."

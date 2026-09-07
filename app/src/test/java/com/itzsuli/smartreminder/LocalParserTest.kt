@@ -24,7 +24,7 @@ class LocalParserTest {
         assertEquals(LocalDate.of(2026, 10, 10), p.dueDate)
         assertEquals("English homework: read page 32", p.title)
         assertTrue(p.details, p.details.startsWith("Read page 32 for English homework."))
-        assertTrue(p.details, p.details.contains("Due Saturday, 10 October."))
+        assertTrue(p.details, p.details.contains("Due Saturday, October 10."))
         assertEquals("📚", p.emoji)
     }
 

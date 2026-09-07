@@ -1,6 +1,6 @@
 # Signing key
 
-`smart-reminder.jks` is the self-signed key the APK in `downloads/` is signed with.
+`smart-reminder.jks` is the self-signed key every released APK is signed with.
 It exists so every build (yours, mine, GitHub Actions) installs as an *update* on your phone
 instead of Android refusing it because the signature changed.
 

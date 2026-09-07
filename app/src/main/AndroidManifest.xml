@@ -11,6 +11,14 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+
+    <!-- Voice input goes through the system speech recogniser -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
 
     <application
         android:name=".SmartReminderApp"
@@ -39,6 +47,15 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
+            <!-- Widget, tile and shortcuts -->
+            <intent-filter>
+                <action android:name="com.itzsuli.smartreminder.action.ADD" />
+                <action android:name="com.itzsuli.smartreminder.action.VOICE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <receiver android:name=".schedule.AlarmReceiver" android:exported="false" />
@@ -51,5 +68,28 @@
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".widget.ReminderWidget"
+            android:exported="true"
+            android:label="Upcoming deadlines">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info" />
+        </receiver>
+
+        <service
+            android:name=".widget.AddReminderTile"
+            android:exported="true"
+            android:icon="@drawable/ic_tile"
+            android:label="Add reminder"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

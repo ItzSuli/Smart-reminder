@@ -9,6 +9,7 @@ import android.util.Log
 import com.itzsuli.smartreminder.SmartReminderApp
 import com.itzsuli.smartreminder.data.Reminder
 import com.itzsuli.smartreminder.data.Settings
+import com.itzsuli.smartreminder.widget.ReminderWidget
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -64,6 +65,7 @@ object Scheduler {
         } catch (t: Throwable) {
             Log.e(TAG, "reschedule failed", t)
         }
+        runCatching { ReminderWidget.refresh(context) }
     }
 
     fun firePendingIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(
@@ -73,7 +75,7 @@ object Scheduler {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 
-    private fun nextWindowStart(settings: Settings, after: LocalDateTime): LocalDateTime {
+    fun nextWindowStart(settings: Settings, after: LocalDateTime): LocalDateTime {
         val startMinute = settings.activeWindow.first
         val todayStart = after.toLocalDate().atStartOfDay().plusMinutes(startMinute.toLong())
         return if (todayStart.isAfter(after)) todayStart else todayStart.plusDays(1)

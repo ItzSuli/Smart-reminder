@@ -9,6 +9,7 @@ import com.itzsuli.smartreminder.SmartReminderApp
 import com.itzsuli.smartreminder.data.Delivery
 import com.itzsuli.smartreminder.data.Reminder
 import com.itzsuli.smartreminder.data.ReminderKind
+import com.itzsuli.smartreminder.data.Settings
 import java.time.LocalDateTime
 import java.time.ZoneId
 import kotlin.random.Random
@@ -17,7 +18,7 @@ import kotlin.random.Random
 object FireEngine {
 
     private const val TAG = "FireEngine"
-    private const val MAX_RETRIES = 3
+    private const val MAX_RETRIES = 6
 
     fun fire(context: Context, onFinished: () -> Unit) {
         val app = SmartReminderApp.get(context)
@@ -47,6 +48,20 @@ object FireEngine {
             return
         }
 
+        val minuteOfDay = now.hour * 60 + now.minute
+        if (minuteOfDay !in settings.activeWindow) {
+            // Quiet hours: deadlines wait for the morning, daily things simply skip.
+            for (reminder in all) {
+                if (reminder.kind == ReminderKind.DEADLINE) {
+                    newRetries[reminder.id] = Retry(at = nextWindowStartMillis(now, settings, zone), count = retries[reminder.id]?.count ?: 0)
+                }
+            }
+            state.retries = newRetries
+            Scheduler.reschedule(context)
+            onFinished()
+            return
+        }
+
         val screenUsable = isScreenUsable(context)
         val overlayAllowed = Popup.canDraw(context)
         val popups = mutableListOf<Reminder>()
@@ -62,11 +77,19 @@ object FireEngine {
         }
         for (reminder in deferred) {
             val count = (retries[reminder.id]?.count ?: 0) + 1
-            if (count <= MAX_RETRIES) {
-                val delayMinutes = 12L + Random.nextInt(0, 11)
-                newRetries[reminder.id] = Retry(at = now.plusMinutes(delayMinutes).atZone(zone).toInstant().toEpochMilli(), count = count)
-            } else {
+            if (count > MAX_RETRIES) {
                 newRetries.remove(reminder.id)
+                continue
+            }
+            val retryAt = now.plusMinutes(6L + Random.nextInt(0, 9))
+            val retryMinute = retryAt.hour * 60 + retryAt.minute
+            val stillToday = retryAt.toLocalDate() == now.toLocalDate()
+            when {
+                retryMinute in settings.activeWindow && stillToday ->
+                    newRetries[reminder.id] = Retry(at = retryAt.atZone(zone).toInstant().toEpochMilli(), count = count)
+                reminder.kind == ReminderKind.DEADLINE ->
+                    newRetries[reminder.id] = Retry(at = nextWindowStartMillis(now, settings, zone), count = count)
+                else -> newRetries.remove(reminder.id)
             }
         }
         state.retries = newRetries
@@ -89,6 +112,11 @@ object FireEngine {
                 onFinished()
             }
         }
+    }
+
+    private fun nextWindowStartMillis(now: LocalDateTime, settings: Settings, zone: ZoneId): Long {
+        val start = Scheduler.nextWindowStart(settings, now).plusMinutes(Random.nextInt(2, 18).toLong())
+        return start.atZone(zone).toInstant().toEpochMilli()
     }
 
     fun isScreenUsable(context: Context): Boolean {

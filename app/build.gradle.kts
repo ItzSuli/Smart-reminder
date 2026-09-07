@@ -15,7 +15,7 @@ android {
         applicationId = "com.itzsuli.smartreminder"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        versionCode = 2
         versionName = "1.0.0"
         vectorDrawables.useSupportLibrary = true
     }
@@ -80,6 +80,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)
+    implementation(libs.mlkit.genai.prompt)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
 }

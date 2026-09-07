@@ -10,6 +10,7 @@ serialization = "1.11.0"
 coroutines = "1.10.2"
 okhttp = "4.12.0"
 junit = "4.13.2"
+mlkitGenaiPrompt = "1.0.0-beta2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -28,6 +29,7 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+mlkit-genai-prompt = { group = "com.google.mlkit", name = "genai-prompt", version.ref = "mlkitGenaiPrompt" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

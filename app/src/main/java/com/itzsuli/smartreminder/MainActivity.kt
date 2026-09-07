@@ -13,6 +13,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.itzsuli.smartreminder.schedule.Scheduler
 import com.itzsuli.smartreminder.ui.AddEditScreen
 import com.itzsuli.smartreminder.ui.HomeScreen
+import com.itzsuli.smartreminder.ui.ImportScreen
 import com.itzsuli.smartreminder.ui.MainViewModel
 import com.itzsuli.smartreminder.ui.Screen
 import com.itzsuli.smartreminder.ui.SettingsScreen
@@ -22,10 +23,15 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
 
+    companion object {
+        const val ACTION_ADD = "com.itzsuli.smartreminder.action.ADD"
+        const val ACTION_VOICE = "com.itzsuli.smartreminder.action.VOICE"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        if (savedInstanceState == null) handleShare(intent)
+        if (savedInstanceState == null) handleIntent(intent)
         setContent {
             val settings by viewModel.settings.collectAsStateWithLifecycle()
             SmartReminderTheme(dynamicColors = settings.dynamicColors) {
@@ -36,7 +42,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        handleShare(intent)
+        handleIntent(intent)
     }
 
     override fun onResume() {
@@ -45,11 +51,15 @@ class MainActivity : ComponentActivity() {
         Scheduler.reschedule(this)
     }
 
-    /** Text shared from another app lands straight in a new reminder. */
-    private fun handleShare(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_SEND && intent.type == "text/plain") {
-            val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
-            if (text.isNotEmpty()) viewModel.startAdd(text)
+    /** Shared text, the widget, the quick-settings tile and launcher shortcuts all land here. */
+    private fun handleIntent(intent: Intent?) {
+        when (intent?.action) {
+            Intent.ACTION_SEND -> if (intent.type == "text/plain") {
+                val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
+                if (text.isNotEmpty()) viewModel.startAdd(text)
+            }
+            ACTION_ADD -> viewModel.startAdd()
+            ACTION_VOICE -> viewModel.startAdd(voice = true)
         }
     }
 }
@@ -62,5 +72,6 @@ private fun AppRoot(viewModel: MainViewModel) {
         Screen.Home -> HomeScreen(viewModel)
         Screen.Add -> AddEditScreen(viewModel)
         Screen.Settings -> SettingsScreen(viewModel)
+        Screen.Import -> ImportScreen(viewModel)
     }
 }

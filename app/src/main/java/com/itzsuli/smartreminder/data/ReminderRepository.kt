@@ -75,7 +75,21 @@ class ReminderRepository(private val context: Context) {
     }
 
     fun setDoneForToday(id: String, done: Boolean) = update(id) {
-        it.copy(doneForDay = if (done) LocalDate.now().toString() else null)
+        val today = LocalDate.now()
+        it.copy(
+            doneForDay = if (done) today.toString() else null,
+            history = Streaks.with(it.history, today, done),
+        )
+    }
+
+    /** Adds or replaces several reminders at once (imports, restores). Returns how many were written. */
+    fun upsertAll(items: List<Reminder>): Int {
+        if (items.isEmpty()) return 0
+        val byId = items.associateBy { it.id }
+        val current = _reminders.value
+        val merged = current.map { byId[it.id] ?: it } + items.filter { r -> current.none { it.id == r.id } }
+        persist(merged)
+        return items.size
     }
 
     fun setPaused(id: String, paused: Boolean) = update(id) { it.copy(paused = paused) }

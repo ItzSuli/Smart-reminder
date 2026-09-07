@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_add"
+        android:shortcutId="add"
+        android:shortcutLongLabel="@string/shortcut_add_long"
+        android:shortcutShortLabel="@string/shortcut_add_short">
+        <intent
+            android:action="com.itzsuli.smartreminder.action.ADD"
+            android:targetClass="com.itzsuli.smartreminder.MainActivity"
+            android:targetPackage="com.itzsuli.smartreminder" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_mic"
+        android:shortcutId="voice"
+        android:shortcutLongLabel="@string/shortcut_voice_long"
+        android:shortcutShortLabel="@string/shortcut_voice_short">
+        <intent
+            android:action="com.itzsuli.smartreminder.action.VOICE"
+            android:targetClass="com.itzsuli.smartreminder.MainActivity"
+            android:targetPackage="com.itzsuli.smartreminder" />
+    </shortcut>
+</shortcuts>

@@ -4,6 +4,7 @@ package com.itzsuli.smartreminder.ui
 
 import android.Manifest
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
@@ -46,6 +48,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -63,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.itzsuli.smartreminder.data.Reminder
 import com.itzsuli.smartreminder.data.ReminderKind
+import com.itzsuli.smartreminder.data.Streaks
 import java.time.LocalDate
 
 @Composable
@@ -70,8 +74,15 @@ fun HomeScreen(vm: MainViewModel) {
     val reminders by vm.reminders.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val resumeTick by vm.resumeTick.collectAsStateWithLifecycle()
+    val message by vm.message.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    LaunchedEffect(message) {
+        message?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            vm.consumeMessage()
+        }
+    }
     val status = remember(resumeTick) { Permissions.status(context) }
     val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.onResumed() }
 
@@ -96,6 +107,7 @@ fun HomeScreen(vm: MainViewModel) {
             TopAppBar(
                 title = { Text("Smart Reminder", fontWeight = FontWeight.Bold) },
                 actions = {
+                    IconButton(onClick = vm::openImport) { Icon(Icons.Default.DateRange, contentDescription = "Import from calendar") }
                     IconButton(onClick = vm::openSettings) { Icon(Icons.Default.Settings, contentDescription = "Settings") }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
@@ -119,10 +131,13 @@ fun HomeScreen(vm: MainViewModel) {
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 100.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (!status.allGood && !settings.setupCardDismissed) {
+                val needsSetup = !status.overlay || !status.exactAlarms || !status.batteryUnrestricted ||
+                    (settings.usesNotifications && !status.notifications)
+                if (needsSetup && !settings.setupCardDismissed) {
                     item(key = "setup") {
                         SetupCard(
                             status = status,
+                            showNotifications = settings.usesNotifications,
                             onNotifications = {
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                                     notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -260,6 +275,8 @@ private fun RoutineCard(reminder: Reminder, doneToday: Boolean, onOpen: () -> Un
                     modifier = Modifier.padding(top = 8.dp),
                 ) {
                     IntensityPill(reminder.intensity)
+                    val streak = Streaks.current(reminder.history)
+                    if (streak >= 2) Pill("🔥 $streak-day streak", MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer, bold = true)
                     if (reminder.dayParts.isNotEmpty()) Pill(reminder.dayParts.joinToString(" · ") { it.label })
                     reminder.dueLocalTime?.let { Pill("at ${it.hhmm()}") }
                     if (reminder.paused) Pill("paused", MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
@@ -301,6 +318,7 @@ private fun DoneRow(reminder: Reminder, onUndo: () -> Unit) {
 @Composable
 private fun SetupCard(
     status: PermissionStatus,
+    showNotifications: Boolean,
     onNotifications: () -> Unit,
     onOverlay: () -> Unit,
     onExact: () -> Unit,
@@ -324,9 +342,17 @@ private fun SetupCard(
             )
             Spacer(Modifier.height(6.dp))
             SetupRow("Pop-ups over other apps", "The 3-second card that slides in", status.overlay, onOverlay)
-            SetupRow("Notifications", "Used when the screen is off", status.notifications, onNotifications)
             if (!status.exactAlarms) SetupRow("Exact timing", "Lets reminders fire on time", false, onExact)
             SetupRow("No battery limits", "Stops Android from silencing the app", status.batteryUnrestricted, onBattery)
+            if (showNotifications) SetupRow("Notifications", "For the notification options you picked", status.notifications, onNotifications)
+            if (Build.MANUFACTURER.equals("samsung", ignoreCase = true)) {
+                Text(
+                    "Samsung: also open Settings → Battery → Background usage limits and keep Smart Reminder out of \"Sleeping apps\", otherwise One UI silences it after a few days.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(top = 6.dp, end = 8.dp),
+                )
+            }
         }
     }
 }

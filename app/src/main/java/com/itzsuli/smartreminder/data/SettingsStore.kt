@@ -32,9 +32,13 @@ class SettingsStore(context: Context) {
     }
 
     private fun read(): Settings = Settings(
-        apiKey = prefs.getString(KEY_API_KEY, "") ?: "",
-        model = prefs.getString(KEY_MODEL, Settings.DEFAULT_MODEL)?.ifBlank { Settings.DEFAULT_MODEL } ?: Settings.DEFAULT_MODEL,
-        deadlineDelivery = enum(prefs.getString(KEY_DEADLINE_DELIVERY, null), Delivery.POPUP_THEN_NOTIFICATION),
+        aiEngine = enum(prefs.getString(KEY_AI_ENGINE, null), AiEngine.AUTO),
+        geminiKey = prefs.getString(KEY_GEMINI_KEY, "") ?: "",
+        geminiModel = prefs.getString(KEY_GEMINI_MODEL, null)?.ifBlank { null } ?: Settings.DEFAULT_GEMINI_MODEL,
+        claudeKey = prefs.getString(KEY_CLAUDE_KEY, null) ?: prefs.getString(KEY_LEGACY_API_KEY, "") ?: "",
+        claudeModel = (prefs.getString(KEY_CLAUDE_MODEL, null) ?: prefs.getString(KEY_LEGACY_MODEL, null))?.ifBlank { null }
+            ?: Settings.DEFAULT_CLAUDE_MODEL,
+        deadlineDelivery = enum(prefs.getString(KEY_DEADLINE_DELIVERY, null), Delivery.POPUP),
         routineDelivery = enum(prefs.getString(KEY_ROUTINE_DELIVERY, null), Delivery.POPUP),
         popupSeconds = prefs.getInt(KEY_POPUP_SECONDS, 3).coerceIn(2, 8),
         activeStart = prefs.getInt(KEY_ACTIVE_START, 8 * 60),
@@ -45,8 +49,11 @@ class SettingsStore(context: Context) {
     )
 
     private fun write(s: Settings) = prefs.edit {
-        putString(KEY_API_KEY, s.apiKey.trim())
-        putString(KEY_MODEL, s.model.trim())
+        putString(KEY_AI_ENGINE, s.aiEngine.name)
+        putString(KEY_GEMINI_KEY, s.geminiKey.trim())
+        putString(KEY_GEMINI_MODEL, s.geminiModel.trim())
+        putString(KEY_CLAUDE_KEY, s.claudeKey.trim())
+        putString(KEY_CLAUDE_MODEL, s.claudeModel.trim())
         putString(KEY_DEADLINE_DELIVERY, s.deadlineDelivery.name)
         putString(KEY_ROUTINE_DELIVERY, s.routineDelivery.name)
         putInt(KEY_POPUP_SECONDS, s.popupSeconds)
@@ -61,8 +68,13 @@ class SettingsStore(context: Context) {
         name?.let { n -> enumValues<T>().firstOrNull { it.name == n } } ?: default
 
     private companion object {
-        const val KEY_API_KEY = "api_key"
-        const val KEY_MODEL = "model"
+        const val KEY_AI_ENGINE = "ai_engine"
+        const val KEY_GEMINI_KEY = "gemini_key"
+        const val KEY_GEMINI_MODEL = "gemini_model"
+        const val KEY_CLAUDE_KEY = "claude_key"
+        const val KEY_CLAUDE_MODEL = "claude_model"
+        const val KEY_LEGACY_API_KEY = "api_key"
+        const val KEY_LEGACY_MODEL = "model"
         const val KEY_DEADLINE_DELIVERY = "deadline_delivery"
         const val KEY_ROUTINE_DELIVERY = "routine_delivery"
         const val KEY_POPUP_SECONDS = "popup_seconds"

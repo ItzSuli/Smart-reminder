@@ -2,6 +2,12 @@
 
 package com.itzsuli.smartreminder.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.speech.RecognizerIntent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -29,6 +35,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,6 +52,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,6 +68,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.itzsuli.smartreminder.data.AiEngine
 import com.itzsuli.smartreminder.data.DayPart
 import com.itzsuli.smartreminder.data.ParseSource
 import com.itzsuli.smartreminder.data.ReminderKind
@@ -69,6 +78,27 @@ fun AddEditScreen(vm: MainViewModel) {
     val draft by vm.draft.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val focus = LocalFocusManager.current
+    val context = LocalContext.current
+    val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim().orEmpty()
+        if (spoken.isNotEmpty()) vm.updateDraft { it.copy(input = (it.input.trim() + " " + spoken).trim()) }
+    }
+    fun speak() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, "Say your reminder")
+        try {
+            speechLauncher.launch(intent)
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(context, "No voice input available on this phone.", Toast.LENGTH_SHORT).show()
+        }
+    }
+    LaunchedEffect(draft.launchVoice) {
+        if (draft.launchVoice) {
+            vm.updateDraft { it.copy(launchVoice = false) }
+            speak()
+        }
+    }
     var showDate by remember { mutableStateOf(false) }
     var showTime by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -127,24 +157,32 @@ fun AddEditScreen(vm: MainViewModel) {
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                if (settings.hasApiKey) "Type it fast and messy. Claude tidies it up." else "Type it fast and messy. The app tidies it up (add a Claude key in Settings for smarter results).",
+                when {
+                    settings.aiEngine == AiEngine.OFFLINE -> "Type it fast and messy. The app tidies it up."
+                    settings.aiEngine == AiEngine.AUTO && !settings.hasGeminiKey && !settings.hasClaudeKey ->
+                        "Type it fast and messy, or tap the mic. Add a free Gemini key in Settings for smarter clean-up."
+                    else -> "Type it fast and messy, or tap the mic. AI tidies it up."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp, start = 4.dp),
             )
             Spacer(Modifier.height(12.dp))
-            Button(
-                onClick = { focus.clearFocus(); vm.makeClear() },
-                enabled = draft.input.isNotBlank() && !draft.loading,
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-            ) {
-                if (draft.loading) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                    Spacer(Modifier.width(10.dp))
-                    Text("Thinking…")
-                } else {
-                    Text(if (draft.previewReady) "✨ Clean it up again" else "✨ Make it clear")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { focus.clearFocus(); vm.makeClear() },
+                    enabled = draft.input.isNotBlank() && !draft.loading,
+                    modifier = Modifier.weight(1f).height(50.dp),
+                ) {
+                    if (draft.loading) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Thinking…")
+                    } else {
+                        Text(if (draft.previewReady) "✨ Clean it up again" else "✨ Make it clear")
+                    }
                 }
+                FilledTonalButton(onClick = { speak() }, modifier = Modifier.height(50.dp)) { Text("🎤") }
             }
             if (draft.previewReady) {
                 Spacer(Modifier.height(16.dp))
@@ -182,10 +220,10 @@ private fun PreviewEditor(draft: Draft, vm: MainViewModel, onPickDate: () -> Uni
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Preview", style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.weight(1f))
-                when (draft.source) {
-                    ParseSource.CLAUDE -> Pill("Cleaned up by Claude", scheme.secondaryContainer, scheme.onSecondaryContainer)
-                    ParseSource.LOCAL -> Pill("Cleaned up offline")
+                when (val src = draft.source) {
                     null -> {}
+                    ParseSource.LOCAL -> Pill(src.label)
+                    else -> Pill(src.label, scheme.secondaryContainer, scheme.onSecondaryContainer)
                 }
             }
             draft.note?.let {
