@@ -95,4 +95,9 @@ class ReminderRepository(private val context: Context) {
     fun setPaused(id: String, paused: Boolean) = update(id) { it.copy(paused = paused) }
 
     fun clearDone() = persist(_reminders.value.filterNot { it.done })
+
+    /** Removes events that are over (date before today) or ticked off. */
+    fun clearPastEvents(today: LocalDate = LocalDate.now()) = persist(
+        _reminders.value.filterNot { it.kind == ReminderKind.EVENT && (it.done || (it.dueLocalDate?.isBefore(today) == true)) }
+    )
 }

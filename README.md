@@ -32,12 +32,13 @@ without ever telling you *when* the next one is coming.
 - **Three nag levels, named exactly like this:** `meh` · `whatever` · `A LOT`. `meh` is the gentlest, `A LOT` the strongest. The app deliberately never shows you how often that is.
 - **Deadlines get louder on their own.** The closer the due date, the more often you hear about it. A timed deadline also gets one guaranteed "final call" shortly before.
 - **Unpredictable by design.** Reminder moments are randomised and mixed with a secret number generated on your phone, so you can't learn the pattern and start ignoring it.
-- **Two kinds of reminders.**
-  - **Deadlines** – homework, exams, appointments, errands. Tick them off once.
+- **Three kinds of reminders.**
+  - **Deadlines** – homework, exams, errands. Things you have to get done; these get nagged.
   - **Daily** – supplements, water, stretching, meds. Come back every day, can be tied to morning / midday / evening, and keep a 🔥 streak.
-- **Pop-ups, not notifications.** A small card slides in at the top of whatever you're doing, stays for 3 seconds (2–8, your choice) and disappears by itself. One tap on **Done** ticks the thing off. Screen off? It quietly tries again a little later. Notifications exist only as an opt-in setting.
+  - **Events** – doctor's appointment, meeting, birthday, flight. Things you just show up to, so they only get a couple of heads-ups (the day before, the morning of, an hour before if timed; optionally 3 days or a week ahead).
+- **Pop-ups, not notifications.** A small card pops up in the upper middle of the screen (or top / center, your choice), stays for 3 seconds (2–8, your choice) and disappears by itself. One tap on **Done** ticks the thing off. Screen off? It quietly tries again a little later. Notifications exist only as an opt-in setting.
 - **Active hours.** Nothing fires outside the window you set (default 08:00–22:00).
-- **Home-screen widget** with your next deadlines and one-tap Add / Speak.
+- **Home-screen widget** with today's date, your next deadlines and events, and one-tap Add / Speak.
 - **Quick Settings tile** – swipe down, tap, start typing.
 - **Import deadlines** from your phone's calendar or a timetable file (.ics).
 - **Backup & restore** everything as one file.

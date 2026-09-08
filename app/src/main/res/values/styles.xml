@@ -1,12 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="WidgetRow">
+    <style name="WidgetTitle">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_marginTop">4dp</item>
         <item name="android:ellipsize">end</item>
         <item name="android:maxLines">1</item>
-        <item name="android:textColor">#E6FFFFFF</item>
-        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+    <style name="WidgetSub">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textColor">#B3FFFFFF</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+    <style name="WidgetEmoji">
+        <item name="android:layout_width">40dp</item>
+        <item name="android:layout_height">40dp</item>
+        <item name="android:background">@drawable/widget_emoji_bg</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textSize">19sp</item>
+    </style>
+    <style name="WidgetChip">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">8dp</item>
+        <item name="android:background">@drawable/widget_chip</item>
+        <item name="android:paddingStart">9dp</item>
+        <item name="android:paddingEnd">9dp</item>
+        <item name="android:paddingTop">4dp</item>
+        <item name="android:paddingBottom">4dp</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:maxLines">1</item>
+    </style>
+    <style name="WidgetRowLayout">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">8dp</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
     </style>
 </resources>

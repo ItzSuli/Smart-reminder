@@ -7,6 +7,7 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -100,6 +101,11 @@ fun HomeScreen(vm: MainViewModel) {
     val activeRoutines = routines.filter { !it.done }.sortedWith(
         compareBy<Reminder> { it.paused }.thenBy { it.isDoneForDay(today) }.thenBy { it.title.lowercase() }
     )
+    val events = reminders.filter { it.kind == ReminderKind.EVENT }
+    val upcomingEvents = events.filter { !it.done && it.dueLocalDate?.isBefore(today) != true }
+        .sortedWith(compareBy<Reminder> { it.dueLocalDate == null }.thenBy { it.dueLocalDate }.thenBy { it.dueLocalTime == null }.thenBy { it.dueLocalTime })
+    val pastEvents = events.filter { it.done || it.dueLocalDate?.isBefore(today) == true }
+        .sortedByDescending { it.dueLocalDate }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -125,6 +131,7 @@ fun HomeScreen(vm: MainViewModel) {
             PrimaryTabRow(selectedTabIndex = tab, containerColor = MaterialTheme.colorScheme.background) {
                 Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(countLabel("Deadlines", activeDeadlines.size)) })
                 Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(countLabel("Daily", activeRoutines.size)) })
+                Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text(countLabel("Events", upcomingEvents.size)) })
             }
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -174,6 +181,31 @@ fun HomeScreen(vm: MainViewModel) {
                             }
                         }
                         items(doneDeadlines, key = { "done-" + it.id }) { reminder ->
+                            DoneRow(reminder, onUndo = { vm.setDone(reminder.id, false) })
+                        }
+                    }
+                } else if (tab == 2) {
+                    if (upcomingEvents.isEmpty()) {
+                        item(key = "empty-events") {
+                            EmptyState(
+                                emoji = "📅",
+                                title = "No events coming up",
+                                body = "Appointments, meetings, birthdays… things you just show up to. Try \"Zahnarzt Do 10:30\" or \"dentist tuesday 3pm\". Events only get a couple of gentle heads-ups.",
+                            )
+                        }
+                    }
+                    items(upcomingEvents, key = { it.id }) { reminder ->
+                        EventCard(reminder, today = today, onOpen = { vm.startEdit(reminder.id) }, onDone = { vm.setDone(reminder.id, true) })
+                    }
+                    if (pastEvents.isNotEmpty()) {
+                        item(key = "past-header") {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp)) {
+                                SectionLabel("Past · ${pastEvents.size}")
+                                Spacer(Modifier.weight(1f))
+                                TextButton(onClick = vm::clearPastEvents) { Text("Clear") }
+                            }
+                        }
+                        items(pastEvents, key = { "past-" + it.id }) { reminder ->
                             DoneRow(reminder, onUndo = { vm.setDone(reminder.id, false) })
                         }
                     }
@@ -235,6 +267,69 @@ private fun DeadlineCard(reminder: Reminder, onOpen: () -> Unit, onDone: () -> U
                 }
             }
             FilledTonalIconButton(onClick = onDone) { Icon(Icons.Default.Check, contentDescription = "Mark done") }
+        }
+    }
+}
+
+@Composable
+private fun EventCard(reminder: Reminder, today: LocalDate, onOpen: () -> Unit, onDone: () -> Unit) {
+    val date = reminder.dueLocalDate
+    Card(
+        onClick = onOpen,
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 14.dp, top = 14.dp, bottom = 14.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // date block
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .width(56.dp)
+                    .background(
+                        if (date == today) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                        MaterialTheme.shapes.medium,
+                    )
+                    .padding(vertical = 8.dp),
+            ) {
+                Text(
+                    date?.dayOfMonth?.toString() ?: "?",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = if (date == today) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Text(
+                    date?.format(java.time.format.DateTimeFormatter.ofPattern("MMM", java.util.Locale.getDefault()))?.uppercase() ?: "",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (date == today) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text("${reminder.emoji} ${reminder.title}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                if (reminder.details.isNotBlank()) {
+                    Text(
+                        reminder.details,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    if (date != null) EventPill(date, reminder.dueLocalTime)
+                    Pill(
+                        when (reminder.leadDays) { 1 -> "heads-up: day before"; 3 -> "heads-up: 3 days"; else -> "heads-up: ${reminder.leadDays} days" },
+                    )
+                }
+            }
+            FilledTonalIconButton(onClick = onDone) { Icon(Icons.Default.Check, contentDescription = "Done") }
         }
     }
 }

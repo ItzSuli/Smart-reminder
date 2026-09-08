@@ -2,6 +2,24 @@
 
 Each section is used as the release notes of the matching GitHub Release.
 
+## v1.2.0
+
+**Events: things you just show up to**
+
+- New third kind next to Deadlines and Daily: **Events**. Doctor's appointment, meeting, birthday, concert, flight — anything that happens at a set time and you can't "do" in advance.
+- Events don't nag. You get one heads-up on the lead day (choose day before / 3 days / a week), one the day before, one on the morning of, and a final call an hour before if the event has a time. That's it.
+- The AI and the offline parser recognise events on their own ("Zahnarzt Do 10:30", "dentist tuesday 3pm", "Termin", "meeting", "Geburtstag" …), and the calendar import creates events by default.
+- Own **Events** tab with a date block per card; past events collect at the bottom and can be cleared.
+
+**Pop-up moved to the upper middle of the screen**
+
+- The card now pops in the upper middle instead of sliding in like a notification from the top. Settings → "Pop-up position" lets you pick Top, Upper middle or Center.
+- Fresh look: bigger emoji tile, a small label (Reminder / Daily / Coming up), softer pop animation.
+
+**New widget**
+
+- Redesigned home-screen widget: gradient card, today's date, up to three upcoming deadlines and events with an emoji tile, sub-line and a colour chip (today = amber, event = teal, overdue = rose), plus round Speak and Add buttons. Follows the system corner radius on Android 12+.
+
 ## v1.1.0
 
 **School shortcuts, in German and English**

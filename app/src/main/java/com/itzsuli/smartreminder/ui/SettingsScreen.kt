@@ -71,6 +71,7 @@ import com.itzsuli.smartreminder.ai.NanoEngine
 import com.itzsuli.smartreminder.data.AiEngine
 import com.itzsuli.smartreminder.data.DateOrder
 import com.itzsuli.smartreminder.data.Delivery
+import com.itzsuli.smartreminder.data.PopupPosition
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
@@ -137,6 +138,18 @@ fun SettingsScreen(vm: MainViewModel) {
                     valueRange = 2f..8f,
                     steps = 5,
                 )
+                Text("Pop-up position", style = MaterialTheme.typography.bodyMedium)
+                val positions = PopupPosition.entries
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    positions.forEachIndexed { index, pos ->
+                        SegmentedButton(
+                            selected = settings.popupPosition == pos,
+                            onClick = { vm.updateSettings { it.copy(popupPosition = pos) } },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = positions.size),
+                            label = { Text(pos.label, maxLines = 1) },
+                        )
+                    }
+                }
                 FilledTonalButton(onClick = { vm.showTestPopup(context) }) { Text("Show a test pop-up") }
             }
 

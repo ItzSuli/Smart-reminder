@@ -62,9 +62,11 @@ data class Draft(
     val original: Reminder? = null,
     /** Set when the screen was opened through "Speak": it launches voice input once. */
     val launchVoice: Boolean = false,
+    /** Events only: first heads-up this many days before. */
+    val leadDays: Int = 1,
 ) {
     val isEdit: Boolean get() = editId != null
-    val canSave: Boolean get() = previewReady && title.isNotBlank() && !loading
+    val canSave: Boolean get() = previewReady && title.isNotBlank() && !loading && (kind != ReminderKind.EVENT || dueDate != null)
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -129,6 +131,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             dayParts = r.dayParts,
             previewReady = true,
             original = r,
+            leadDays = r.leadDays,
         )
         _screen.value = Screen.Add
     }
@@ -176,9 +179,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             kind = d.kind,
             title = d.title.trim(),
             details = d.details.trim(),
-            emoji = d.emoji.trim().ifBlank { if (d.kind == ReminderKind.ROUTINE) "🔁" else "📌" },
+            emoji = d.emoji.trim().ifBlank { when (d.kind) { ReminderKind.ROUTINE -> "🔁"; ReminderKind.EVENT -> "📅"; ReminderKind.DEADLINE -> "📌" } },
             intensity = d.intensity,
-            dueDate = if (d.kind == ReminderKind.DEADLINE) d.dueDate?.toString() else null,
+            dueDate = if (d.kind != ReminderKind.ROUTINE) d.dueDate?.toString() else null,
+            leadDays = d.leadDays.coerceIn(1, 30),
             dueTime = d.dueTime?.toString()?.take(5),
             dayParts = if (d.kind == ReminderKind.ROUTINE) d.dayParts else emptyList(),
             rawInput = d.input.trim(),
@@ -203,6 +207,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setPaused(id: String, paused: Boolean) = app.repository.setPaused(id, paused)
     fun delete(id: String) = app.repository.delete(id)
     fun clearDone() = app.repository.clearDone()
+    fun clearPastEvents() = app.repository.clearPastEvents()
 
     // ---- settings + AI ---------------------------------------------------------------------
 
@@ -248,7 +253,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             emoji = "👋",
         )
         if (Popup.canDraw(context)) {
-            Popup.show(context, listOf(sample), settings.value.popupSeconds * 1000L) {}
+            Popup.show(context, listOf(sample), settings.value.popupSeconds * 1000L, settings.value.popupPosition) {}
         } else {
             Toast.makeText(context, "Allow \"display over other apps\" first, then try again.", Toast.LENGTH_LONG).show()
         }
@@ -283,7 +288,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun importSelected(keys: Set<String>, intensity: Intensity) {
+    fun importSelected(keys: Set<String>, intensity: Intensity, kind: ReminderKind = ReminderKind.EVENT) {
         val existing = app.repository.reminders.value
         val picked = _importEvents.value.filter { it.key in keys }
         val fresh = picked.filterNot { e ->
@@ -293,9 +298,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val dateText = e.date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.getDefault()))
             val timeText = e.time?.let { " at " + it.format(DateTimeFormatter.ofPattern("HH:mm")) } ?: ""
             Reminder(
-                kind = ReminderKind.DEADLINE,
+                kind = kind,
                 title = e.title,
-                details = e.details.take(200).ifBlank { "From ${e.source}." } + " Due $dateText$timeText.",
+                details = e.details.take(200).ifBlank { "From ${e.source}." } + (if (kind == ReminderKind.EVENT) " On $dateText$timeText." else " Due $dateText$timeText."),
                 emoji = "📅",
                 intensity = intensity,
                 dueDate = e.date.toString(),
@@ -306,7 +311,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val added = app.repository.upsertAll(reminders)
         val skipped = picked.size - fresh.size
         say(buildString {
-            append(if (added == 1) "Added 1 deadline." else "Added $added deadlines.")
+            val noun = if (kind == ReminderKind.EVENT) "event" else "deadline"
+            append(if (added == 1) "Added 1 $noun." else "Added $added ${noun}s.")
             if (skipped > 0) append(" $skipped already existed.")
         })
         goHome()

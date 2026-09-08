@@ -5,9 +5,14 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.util.UUID
 
-/** One-off things with a deadline vs. things you do every day (supplements, habits…). */
+/**
+ * DEADLINE: things you have to get done (homework, errands) – nagged at the chosen level.
+ * ROUTINE: things you do every day (supplements, habits).
+ * EVENT: things that simply happen at a set time and you just show up (appointments, meetings) –
+ *        only a couple of gentle heads-ups, never constant nagging.
+ */
 @Serializable
-enum class ReminderKind { DEADLINE, ROUTINE }
+enum class ReminderKind { DEADLINE, ROUTINE, EVENT }
 
 /** How hard the app nags. The labels are shown exactly like this in the UI. */
 @Serializable
@@ -48,6 +53,8 @@ data class Reminder(
     val doneForDay: String? = null,
     /** Routines only: ISO dates on which it was done. Feeds the streak counter. */
     val history: List<String> = emptyList(),
+    /** Events only: how many days ahead the first heads-up comes (1, 3 or 7). */
+    val leadDays: Int = 1,
 ) {
     val dueLocalDate: LocalDate? get() = dueDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
     val dueLocalTime: LocalTime? get() = dueTime?.let { runCatching { LocalTime.parse(it) }.getOrNull() }
@@ -95,6 +102,13 @@ enum class Delivery(val label: String, val description: String) {
     NOTIFICATION("Notification only", "Classic notification every time."),
 }
 
+/** Where the pop-up card appears on screen. */
+enum class PopupPosition(val label: String) {
+    TOP("Top"),
+    UPPER_MIDDLE("Upper middle"),
+    CENTER("Center");
+}
+
 enum class DateOrder(val label: String, val example: String) {
     DAY_FIRST("day.month", "10.10 = October 10, 3.5 = May 3"),
     MONTH_FIRST("month/day", "10/12 = October 12, 3/5 = March 5");
@@ -109,6 +123,7 @@ data class Settings(
     val deadlineDelivery: Delivery = Delivery.POPUP,
     val routineDelivery: Delivery = Delivery.POPUP,
     val popupSeconds: Int = 3,
+    val popupPosition: PopupPosition = PopupPosition.UPPER_MIDDLE,
     /** Minutes after midnight. Reminders only fire inside [activeStart, activeEnd). */
     val activeStart: Int = 8 * 60,
     val activeEnd: Int = 22 * 60,

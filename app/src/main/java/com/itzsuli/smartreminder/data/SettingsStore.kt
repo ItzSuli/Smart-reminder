@@ -41,6 +41,7 @@ class SettingsStore(context: Context) {
         deadlineDelivery = enum(prefs.getString(KEY_DEADLINE_DELIVERY, null), Delivery.POPUP),
         routineDelivery = enum(prefs.getString(KEY_ROUTINE_DELIVERY, null), Delivery.POPUP),
         popupSeconds = prefs.getInt(KEY_POPUP_SECONDS, 3).coerceIn(2, 8),
+        popupPosition = enum(prefs.getString(KEY_POPUP_POSITION, null), PopupPosition.UPPER_MIDDLE),
         activeStart = prefs.getInt(KEY_ACTIVE_START, 8 * 60),
         activeEnd = prefs.getInt(KEY_ACTIVE_END, 22 * 60),
         dateOrder = enum(prefs.getString(KEY_DATE_ORDER, null), DateOrder.DAY_FIRST),
@@ -57,6 +58,7 @@ class SettingsStore(context: Context) {
         putString(KEY_DEADLINE_DELIVERY, s.deadlineDelivery.name)
         putString(KEY_ROUTINE_DELIVERY, s.routineDelivery.name)
         putInt(KEY_POPUP_SECONDS, s.popupSeconds)
+        putString(KEY_POPUP_POSITION, s.popupPosition.name)
         putInt(KEY_ACTIVE_START, s.activeStart)
         putInt(KEY_ACTIVE_END, s.activeEnd)
         putString(KEY_DATE_ORDER, s.dateOrder.name)
@@ -78,6 +80,7 @@ class SettingsStore(context: Context) {
         const val KEY_DEADLINE_DELIVERY = "deadline_delivery"
         const val KEY_ROUTINE_DELIVERY = "routine_delivery"
         const val KEY_POPUP_SECONDS = "popup_seconds"
+        const val KEY_POPUP_POSITION = "popup_position"
         const val KEY_ACTIVE_START = "active_start"
         const val KEY_ACTIVE_END = "active_end"
         const val KEY_DATE_ORDER = "date_order"

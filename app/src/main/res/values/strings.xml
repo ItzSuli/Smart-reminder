@@ -2,9 +2,8 @@
 <resources>
     <string name="app_name">Smart Reminder</string>
     <string name="widget_description">Your next deadlines, plus one-tap Add and Speak buttons.</string>
-    <string name="widget_add">＋ Add</string>
-    <string name="widget_speak">🎤 Speak</string>
-    <string name="widget_empty">Nothing due. Tap Add or Speak.</string>
+    <string name="widget_kicker">Up next</string>
+    <string name="widget_empty">Nothing coming up. Tap + to add something.</string>
     <string name="shortcut_add_short">Add</string>
     <string name="shortcut_add_long">Add a reminder</string>
     <string name="shortcut_voice_short">Speak</string>

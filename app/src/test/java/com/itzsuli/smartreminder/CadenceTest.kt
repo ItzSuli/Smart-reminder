@@ -97,6 +97,42 @@ class CadenceTest {
         assertEquals(listOf(LocalTime.of(8, 30)), Cadence.slotsFor(r, day, settings, 7L))
     }
 
+    private fun event(daysLeft: Long, lead: Int = 1, time: String? = null, id: String = "e") = Reminder(
+        id = id, kind = ReminderKind.EVENT, title = "t", dueDate = day.plusDays(daysLeft).toString(), dueTime = time, leadDays = lead,
+    )
+
+    @Test
+    fun `events get a heads-up the day before and the morning of, nothing else`() {
+        for (salt in 1L..20L) {
+            assertTrue(Cadence.slotsFor(event(5), day, settings, salt).isEmpty())
+            assertTrue(Cadence.slotsFor(event(2), day, settings, salt).isEmpty())
+            assertEquals(1, Cadence.slotsFor(event(1), day, settings, salt).size)
+            val morning = Cadence.slotsFor(event(0), day, settings, salt)
+            assertEquals(1, morning.size)
+            assertTrue("${morning[0]} should be early", morning[0].isBefore(LocalTime.of(11, 1)))
+            assertTrue(Cadence.slotsFor(event(-1), day, settings, salt).isEmpty())
+        }
+    }
+
+    @Test
+    fun `a longer lead adds one early heads-up`() {
+        for (salt in 1L..10L) {
+            assertEquals(1, Cadence.slotsFor(event(7, lead = 7), day, settings, salt).size)
+            assertEquals(1, Cadence.slotsFor(event(3, lead = 7), day, settings, salt).size)
+            assertTrue(Cadence.slotsFor(event(5, lead = 7), day, settings, salt).isEmpty())
+            assertEquals(1, Cadence.slotsFor(event(3, lead = 3), day, settings, salt).size)
+        }
+    }
+
+    @Test
+    fun `a timed event gets a final call an hour before`() {
+        for (salt in 1L..10L) {
+            val slots = Cadence.slotsFor(event(0, time = "15:00"), day, settings, salt)
+            assertTrue(slots.contains(LocalTime.of(14, 0)))
+            assertTrue(slots.all { !it.isAfter(LocalTime.of(14, 0)) })
+        }
+    }
+
     @Test
     fun `scheduler finds the next occurrence after a moment`() {
         val r = routine(Intensity.A_LOT)

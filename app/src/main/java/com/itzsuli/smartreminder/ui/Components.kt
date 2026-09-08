@@ -100,6 +100,31 @@ fun dueLabel(date: LocalDate, time: LocalTime?, today: LocalDate = LocalDate.now
     }
 }
 
+/** Label for events: no "overdue", just when it happens. */
+fun eventLabel(date: LocalDate, time: LocalTime?, today: LocalDate = LocalDate.now()): DueLabel {
+    val days = ChronoUnit.DAYS.between(today, date)
+    val short = date.format(DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault()))
+    val timeText = time?.let { " " + it.format(DateTimeFormatter.ofPattern("HH:mm")) } ?: ""
+    return when {
+        days < 0 -> DueLabel("Over · $short", Urgency.LATER)
+        days == 0L -> DueLabel("Today$timeText", Urgency.TODAY)
+        days == 1L -> DueLabel("Tomorrow$timeText", Urgency.SOON)
+        days < 7 -> DueLabel("$short$timeText · in $days days", Urgency.SOON)
+        else -> DueLabel("$short$timeText", Urgency.LATER)
+    }
+}
+
+@Composable
+fun EventPill(date: LocalDate, time: LocalTime?) {
+    val label = eventLabel(date, time)
+    val scheme = MaterialTheme.colorScheme
+    when (label.urgency) {
+        Urgency.TODAY -> Pill(label.text, scheme.tertiaryContainer, scheme.onTertiaryContainer, bold = true)
+        Urgency.SOON -> Pill(label.text, scheme.secondaryContainer, scheme.onSecondaryContainer)
+        else -> Pill(label.text, scheme.surfaceVariant, scheme.onSurfaceVariant)
+    }
+}
+
 @Composable
 fun DuePill(date: LocalDate, time: LocalTime?) {
     val label = dueLabel(date, time)

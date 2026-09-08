@@ -154,15 +154,17 @@ class LocalParser(
 
         // ---- kind ---------------------------------------------------------------------------
         val explicitEvery = tokens.any { norm(it) in setOf("every", "daily", "everyday", "täglich", "taeglich", "jeden") }
+        val schoolContext = tokens.any { isSchoolWord(it) }
+        val eventHint = tokens.any { norm(it) in EVENT_WORDS }
         val kind = when {
             explicitEvery -> ReminderKind.ROUTINE
+            eventHint && !schoolContext && date != null -> ReminderKind.EVENT
             date != null -> ReminderKind.DEADLINE
             routineHint -> ReminderKind.ROUTINE
             else -> ReminderKind.DEADLINE
         }
 
         // ---- expand shortcuts, subjects, homework words --------------------------------------
-        val schoolContext = tokens.any { isSchoolWord(it) }
         val rest = mutableListOf<String>()
         val restForTitle = mutableListOf<String>()
         var subject: String? = null
@@ -235,6 +237,8 @@ class LocalParser(
             append(sentence)
             if (kind == ReminderKind.DEADLINE && dueDate != null) {
                 append(" ").append(duePhrase(dueDate, time, german, names))
+            } else if (kind == ReminderKind.EVENT && dueDate != null) {
+                append(" ").append(eventPhrase(dueDate, time, german, names))
             } else if (kind == ReminderKind.ROUTINE) {
                 append(" ").append(routinePhrase(dayParts.toList(), time, german))
             }
@@ -243,7 +247,7 @@ class LocalParser(
         return ParsedReminder(
             title = shorten(title),
             details = details,
-            dueDate = if (kind == ReminderKind.DEADLINE) date else null,
+            dueDate = if (kind != ReminderKind.ROUTINE) date else null,
             dueTime = time,
             kind = kind,
             emoji = emojiFor("$clean $text", kind),
@@ -302,6 +306,25 @@ class LocalParser(
                 else -> date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d", loc))
             }
             "Due $dayText" + (timeText?.let { " at $it" } ?: "") + "."
+        }
+    }
+
+    private fun eventPhrase(date: LocalDate, time: LocalTime?, german: Boolean, loc: Locale): String {
+        val timeText = time?.format(DateTimeFormatter.ofPattern("HH:mm"))
+        return if (german) {
+            val dayText = when (date) {
+                today -> "Heute"
+                today.plusDays(1) -> "Morgen"
+                else -> "Am " + date.format(DateTimeFormatter.ofPattern("EEEE, d. MMMM", loc))
+            }
+            dayText + (timeText?.let { " um $it Uhr" } ?: "") + "."
+        } else {
+            val dayText = when (date) {
+                today -> "Today"
+                today.plusDays(1) -> "Tomorrow"
+                else -> "On " + date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d", loc))
+            }
+            dayText + (timeText?.let { " at $it" } ?: "") + "."
         }
     }
 
@@ -467,7 +490,7 @@ class LocalParser(
     private fun emojiFor(text: String, kind: ReminderKind): String {
         val t = text.lowercase(Locale.ROOT)
         for ((keys, emoji) in EMOJI_RULES) if (keys.any { t.contains(it) }) return emoji
-        return if (kind == ReminderKind.ROUTINE) "🔁" else "📌"
+        return when (kind) { ReminderKind.ROUTINE -> "🔁"; ReminderKind.EVENT -> "📅"; ReminderKind.DEADLINE -> "📌" }
     }
 
     private class Subject(val en: String, val de: String, val codes: List<String>, val names: List<String>)
@@ -597,6 +620,17 @@ class LocalParser(
             "prepare", "water", "drink", "vitamin", "pills", "dentist", "doctor", "meeting", "at",
         )
 
+        /** Things you attend rather than do. */
+        private val EVENT_WORDS = setOf(
+            "appointment", "appt", "termin", "meeting", "besprechung", "doctor", "doc", "dentist", "arzt", "zahnarzt", "kieferorthopäde", "kfo",
+            "orthodontist", "physio", "therapie", "therapy", "party", "birthday", "bday", "geburtstag", "concert", "konzert", "flight", "flug",
+            "train", "zug", "bus", "interview", "vorstellungsgespräch", "kino", "cinema", "movie", "film", "game", "spiel", "match", "turnier",
+            "tournament", "wedding", "hochzeit", "visit", "besuch", "lecture", "vorlesung", "elternabend", "elternsprechtag", "funeral", "beerdigung",
+            "dinner", "brunch", "date", "treffen", "meetup", "ausflug", "trip", "urlaub", "vacation", "holiday", "ferien", "abflug", "abfahrt",
+            "check-in", "checkin", "reservation", "reservierung", "haircut", "friseur", "frisör", "barber", "tattoo", "impfung", "vaccination",
+            "camp", "training", "probe", "rehearsal", "show", "theater", "opera", "festival", "sitzung", "session", "webinar", "workshop",
+        )
+
         private val ROUTINE_WORDS = setOf("every", "daily", "everyday", "each", "täglich", "taeglich", "jeden", "jede", "jedes", "always", "routine", "regularly", "immer")
 
         private val ROUTINE_NOUNS = setOf(
@@ -621,7 +655,10 @@ class LocalParser(
             listOf("birthday", "bday", "party", "gift", "present", "geburtstag", "geschenk") to "🎂",
             listOf("clean", "laundry", "wash", "dishes", "tidy", "vacuum", "trash", "garbage", "putzen", "wäsche", "müll", "aufräumen") to "🧹",
             listOf("cook", "dinner", "lunch", "breakfast", "meal", "food", "eat", "kochen", "essen") to "🍳",
-            listOf("doctor", "dentist", "arzt", "zahnarzt", "clinic", "hospital", "checkup", "check-up") to "🩺",
+            listOf("dentist", "zahnarzt", "kieferorth", "orthodont", "teeth", "zähne") to "🦷",
+            listOf("doctor", "arzt", "clinic", "hospital", "checkup", "check-up", "impfung", "vaccin", "physio", "therap") to "🩺",
+            listOf("haircut", "friseur", "frisör", "barber") to "💇",
+            listOf("concert", "konzert", "festival", "show", "theater", "opera") to "🎫",
             listOf("presentation", "present", "slides", "talk", "speech", "referat", "präsi", "vortrag") to "🎤",
             listOf("project", "code", "build", "deploy", "fix", "bug", "commit", "projekt") to "💻",
             listOf("plant", "garden", "flower", "pflanze", "gießen") to "🪴",

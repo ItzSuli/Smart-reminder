@@ -47,7 +47,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import com.itzsuli.smartreminder.data.Intensity
+import com.itzsuli.smartreminder.data.ReminderKind
 import com.itzsuli.smartreminder.io.CalendarSource
 
 @Composable
@@ -57,6 +61,7 @@ fun ImportScreen(vm: MainViewModel) {
     val context = LocalContext.current
     var selected by remember { mutableStateOf(setOf<String>()) }
     var intensity by remember { mutableStateOf(Intensity.WHATEVER) }
+    var asKind by remember { mutableStateOf(ReminderKind.EVENT) }
     var hasPermission by remember { mutableStateOf(CalendarSource.hasPermission(context)) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasPermission = granted
@@ -81,15 +86,30 @@ fun ImportScreen(vm: MainViewModel) {
             if (events.isNotEmpty()) {
                 Surface(color = MaterialTheme.colorScheme.background) {
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-                        SectionLabel("Nag level for the imported ones")
-                        IntensitySelector(intensity, onSelect = { intensity = it })
+                        SectionLabel("Add them as")
+                        val kinds = listOf(ReminderKind.EVENT to "Events (just show up)", ReminderKind.DEADLINE to "Deadlines (nag me)")
+                        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                            kinds.forEachIndexed { index, (kind, label) ->
+                                SegmentedButton(
+                                    selected = asKind == kind,
+                                    onClick = { asKind = kind },
+                                    shape = SegmentedButtonDefaults.itemShape(index = index, count = kinds.size),
+                                    label = { Text(label, maxLines = 1) },
+                                )
+                            }
+                        }
+                        if (asKind == ReminderKind.DEADLINE) {
+                            Spacer(Modifier.height(8.dp))
+                            IntensitySelector(intensity, onSelect = { intensity = it })
+                        }
                         Spacer(Modifier.height(10.dp))
                         Button(
-                            onClick = { vm.importSelected(selected, intensity) },
+                            onClick = { vm.importSelected(selected, intensity, asKind) },
                             enabled = selected.isNotEmpty(),
                             modifier = Modifier.fillMaxWidth().height(50.dp),
                         ) {
-                            Text(if (selected.size == 1) "Add 1 as a deadline" else "Add ${selected.size} as deadlines")
+                            val noun = if (asKind == ReminderKind.EVENT) "event" else "deadline"
+                            Text(if (selected.size == 1) "Add 1 $noun" else "Add ${selected.size} ${noun}s")
                         }
                     }
                 }

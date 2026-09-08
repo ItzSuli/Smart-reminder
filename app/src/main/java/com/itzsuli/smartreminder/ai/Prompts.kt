@@ -59,7 +59,7 @@ Shortcut glossary (the user writes in German, English or a mix; expand every sho
             - details: one or two friendly, complete sentences that keep every piece of information from the note (page, task numbers, chapter, what to do). Mention the due date in words when there is one: English month first ("Due Saturday, October 10 at 14:00"), German the natural way ("Fällig am Samstag, 10. Oktober um 14:00 Uhr").
             - due_date: ISO yyyy-mm-dd, or "" when the note has no date. A weekday name or abbreviation (Do, Fr, mon, tues…) means its next occurrence. If both a weekday and a numeric date are present, the numeric date wins. A numeric date without a year is this year, or next year if that day already passed.
             - due_time: 24-hour HH:MM, or "" when no time is given ("um 15 Uhr" → "15:00", "5pm" → "17:00").
-            - kind: "deadline" for anything that is done once (homework, exams, appointments, errands, calls). "routine" for things repeated every day or regularly (supplements, medication, habits, practice, drinking water).
+            - kind: "deadline" for work that has to get done by a date (homework, exams to study for, essays, errands, calls, hand-ins). "routine" for things repeated every day or regularly (supplements, medication, habits, practice, drinking water). "event" for things that simply happen at a set date or time and the user just attends (doctor/dentist/Arzt/Zahnarzt appointments, Termine, meetings, birthdays, parties, concerts, trips, flights, lessons, school events).
             - day_parts: for routines only, when the note says when in the day it happens: any of "morning", "midday", "evening". Otherwise an empty list.
             - emoji: exactly one emoji that fits the reminder.
 
@@ -70,6 +70,8 @@ Shortcut glossary (the user writes in German, English or a mix; expand every sho
             → {"title": "Math: task 3 on page 32", "details": "Do task 3 on page 32 for Math. Due $tomorrowEn.", "due_date": "$tomorrow", "due_time": "", "kind": "deadline", "day_parts": [], "emoji": "📐"}
             Note: "Vit D jeden morgen"
             → {"title": "Vitamin D", "details": "Jeden Morgen Vitamin D nehmen.", "due_date": "", "due_time": "", "kind": "routine", "day_parts": ["morning"], "emoji": "💊"}
+            Note: "Zahnarzt Do 10:30"
+            → {"title": "Zahnarzt", "details": "Zahnarzttermin am $thursdayDe um 10:30 Uhr.", "due_date": "$thursday", "due_time": "10:30", "kind": "event", "day_parts": [], "emoji": "🦷"}
 
             Never invent dates, times or details that are not in the note.
         """.trimIndent()
@@ -84,7 +86,11 @@ Shortcut glossary (the user writes in German, English or a mix; expand every sho
     /** Compact prompt for the small on-device model. Dates come from the offline parser, so the model only rewrites text. */
     fun nanoPrompt(input: String, hints: ParsedReminder): String {
         val facts = buildList {
-            add("type: " + if (hints.kind == ReminderKind.ROUTINE) "daily routine" else "one-off deadline")
+            add("type: " + when (hints.kind) {
+                ReminderKind.ROUTINE -> "daily routine"
+                ReminderKind.EVENT -> "event / appointment (the user just attends it)"
+                ReminderKind.DEADLINE -> "one-off deadline"
+            })
             hints.dueDate?.let { add("due date: " + it.format(DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.ENGLISH))) }
             hints.dueTime?.let { add("time: " + it.format(DateTimeFormatter.ofPattern("HH:mm"))) }
             if (hints.dayParts.isNotEmpty()) add("part of day: " + hints.dayParts.joinToString(", ") { it.label.lowercase(Locale.ROOT) })
@@ -142,7 +148,11 @@ Shortcut glossary (the user writes in German, English or a mix; expand every sho
 
     fun toParsed(o: JsonObject, source: ParseSource): ParsedReminder {
         fun str(key: String) = o[key]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-        val kind = if (str("kind").equals("routine", ignoreCase = true)) ReminderKind.ROUTINE else ReminderKind.DEADLINE
+        val kind = when (str("kind").lowercase(Locale.ROOT)) {
+            "routine" -> ReminderKind.ROUTINE
+            "event" -> ReminderKind.EVENT
+            else -> ReminderKind.DEADLINE
+        }
         val date = str("due_date").takeIf { it.isNotEmpty() }?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         val time = str("due_time").takeIf { it.isNotEmpty() }?.let { t ->
             runCatching { LocalTime.parse(if (t.length == 4) "0$t" else t) }.getOrNull()
@@ -160,10 +170,10 @@ Shortcut glossary (the user writes in German, English or a mix; expand every sho
         return ParsedReminder(
             title = str("title").ifBlank { "Reminder" },
             details = str("details"),
-            dueDate = if (kind == ReminderKind.DEADLINE) date else null,
+            dueDate = if (kind != ReminderKind.ROUTINE) date else null,
             dueTime = time,
             kind = kind,
-            emoji = str("emoji").ifBlank { if (kind == ReminderKind.ROUTINE) "🔁" else "📌" }.take(4),
+            emoji = str("emoji").ifBlank { when (kind) { ReminderKind.ROUTINE -> "🔁"; ReminderKind.EVENT -> "📅"; ReminderKind.DEADLINE -> "📌" } }.take(4),
             dayParts = if (kind == ReminderKind.ROUTINE) parts else emptyList(),
             source = source,
         )
@@ -179,7 +189,7 @@ Shortcut glossary (the user writes in German, English or a mix; expand every sho
             putJsonObject("due_time") { put("type", "string") }
             putJsonObject("kind") {
                 put("type", "string")
-                putJsonArray("enum") { add("deadline"); add("routine") }
+                putJsonArray("enum") { add("deadline"); add("routine"); add("event") }
             }
             putJsonObject("day_parts") {
                 put("type", "array")
@@ -206,7 +216,7 @@ Shortcut glossary (the user writes in German, English or a mix; expand every sho
             putJsonObject("due_time") { put("type", "STRING") }
             putJsonObject("kind") {
                 put("type", "STRING")
-                putJsonArray("enum") { add("deadline"); add("routine") }
+                putJsonArray("enum") { add("deadline"); add("routine"); add("event") }
             }
             putJsonObject("day_parts") {
                 put("type", "ARRAY")

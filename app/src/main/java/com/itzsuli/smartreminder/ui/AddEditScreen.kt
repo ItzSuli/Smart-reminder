@@ -255,7 +255,7 @@ private fun PreviewEditor(draft: Draft, vm: MainViewModel, onPickDate: () -> Uni
             )
 
             SectionLabel("Type")
-            val kinds = listOf(ReminderKind.DEADLINE to "Deadline", ReminderKind.ROUTINE to "Daily")
+            val kinds = listOf(ReminderKind.DEADLINE to "Deadline", ReminderKind.ROUTINE to "Daily", ReminderKind.EVENT to "Event")
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 kinds.forEachIndexed { index, (kind, label) ->
                     SegmentedButton(
@@ -267,7 +267,45 @@ private fun PreviewEditor(draft: Draft, vm: MainViewModel, onPickDate: () -> Uni
                 }
             }
 
-            if (draft.kind == ReminderKind.DEADLINE) {
+            if (draft.kind == ReminderKind.EVENT) {
+                SectionLabel("When")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onPickDate, modifier = Modifier.weight(1.4f)) {
+                        Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(draft.dueDate?.pretty() ?: "Pick a date", maxLines = 1)
+                    }
+                    OutlinedButton(onClick = onPickTime, modifier = Modifier.weight(1f)) {
+                        Text(draft.dueTime?.hhmm() ?: "Time", maxLines = 1)
+                    }
+                }
+                if (draft.dueDate != null || draft.dueTime != null) {
+                    Row {
+                        if (draft.dueDate != null) TextButton(onClick = { vm.updateDraft { it.copy(dueDate = null) } }) { Text("Clear date") }
+                        if (draft.dueTime != null) TextButton(onClick = { vm.updateDraft { it.copy(dueTime = null) } }) { Text("Clear time") }
+                    }
+                }
+                if (draft.dueDate == null) {
+                    Text("An event needs a date, otherwise there's nothing to look forward to.", style = MaterialTheme.typography.bodySmall, color = scheme.error)
+                }
+                SectionLabel("Heads-up")
+                val leads = listOf(1 to "Day before", 3 to "3 days before", 7 to "A week before")
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    leads.forEachIndexed { index, (days, label) ->
+                        SegmentedButton(
+                            selected = draft.leadDays == days,
+                            onClick = { vm.updateDraft { it.copy(leadDays = days) } },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = leads.size),
+                            label = { Text(label, maxLines = 1) },
+                        )
+                    }
+                }
+                Text(
+                    "Events don't nag. You get one heads-up on that day, one the day before, one on the morning of, and a final call an hour before if it has a time.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                )
+            } else if (draft.kind == ReminderKind.DEADLINE) {
                 SectionLabel("Due")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onPickDate, modifier = Modifier.weight(1.4f)) {
@@ -320,14 +358,16 @@ private fun PreviewEditor(draft: Draft, vm: MainViewModel, onPickDate: () -> Uni
                 }
             }
 
-            SectionLabel("How much should it nag?")
-            IntensitySelector(draft.intensity, onSelect = { i -> vm.updateDraft { it.copy(intensity = i) } })
-            Text(
-                if (draft.kind == ReminderKind.DEADLINE) "Whatever you pick, it gets louder by itself as the deadline gets closer. You won't know exactly when the next nudge comes."
-                else "Daily things are spread over the day and never fire more than a few times, so even A LOT stays calm.",
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
-            )
+            if (draft.kind != ReminderKind.EVENT) {
+                SectionLabel("How much should it nag?")
+                IntensitySelector(draft.intensity, onSelect = { i -> vm.updateDraft { it.copy(intensity = i) } })
+                Text(
+                    if (draft.kind == ReminderKind.DEADLINE) "Whatever you pick, it gets louder by itself as the deadline gets closer. You won't know exactly when the next nudge comes."
+                    else "Daily things are spread over the day and never fire more than a few times, so even A LOT stays calm.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

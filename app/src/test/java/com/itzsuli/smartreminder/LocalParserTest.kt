@@ -42,7 +42,8 @@ class LocalParserTest {
         assertEquals(today.plusDays(1), p.dueDate)
         assertEquals(LocalTime.of(15, 30), p.dueTime)
         assertEquals("Dentist", p.title)
-        assertEquals("🩺", p.emoji)
+        assertEquals(ReminderKind.EVENT, p.kind)
+        assertEquals("🦷", p.emoji)
     }
 
     @Test
@@ -146,6 +147,26 @@ class LocalParserTest {
         val p = parser.parse("mathe hausaufgaben s.12 bis freitag")
         assertEquals(DayOfWeek.FRIDAY, p.dueDate?.dayOfWeek)
         assertEquals("Mathe-Hausaufgabe: Seite 12", p.title)
+    }
+
+    @Test
+    fun `appointments become events in both languages`() {
+        val p = parser.parse("Zahnarzt Do 10:30")
+        assertEquals(ReminderKind.EVENT, p.kind)
+        assertEquals(DayOfWeek.THURSDAY, p.dueDate?.dayOfWeek)
+        assertEquals(LocalTime.of(10, 30), p.dueTime)
+        assertEquals("Zahnarzt", p.title)
+        assertTrue(p.details, p.details.startsWith("Zahnarzt. Am Donnerstag, "))
+        val tomorrow = parser.parse("Zahnarzt Di 10:30")
+        assertTrue(tomorrow.details, tomorrow.details.startsWith("Zahnarzt. Morgen um 10:30 Uhr."))
+        assertEquals("🦷", p.emoji)
+        val q = parser.parse("dentist appointment thursday at 3pm")
+        assertEquals(ReminderKind.EVENT, q.kind)
+        assertEquals(LocalTime.of(15, 0), q.dueTime)
+        assertTrue(q.details, q.details.contains("On Thursday, "))
+        // school work with an event-ish word stays a deadline
+        val r = parser.parse("E Referat vorbereiten bis Fr")
+        assertEquals(ReminderKind.DEADLINE, r.kind)
     }
 
     @Test

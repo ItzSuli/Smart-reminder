@@ -52,7 +52,7 @@ object FireEngine {
         if (minuteOfDay !in settings.activeWindow) {
             // Quiet hours: deadlines wait for the morning, daily things simply skip.
             for (reminder in all) {
-                if (reminder.kind == ReminderKind.DEADLINE) {
+                if (reminder.kind != ReminderKind.ROUTINE) {
                     newRetries[reminder.id] = Retry(at = nextWindowStartMillis(now, settings, zone), count = retries[reminder.id]?.count ?: 0)
                 }
             }
@@ -68,7 +68,7 @@ object FireEngine {
         val notifications = mutableListOf<Reminder>()
         val deferred = mutableListOf<Reminder>()
         for (reminder in all) {
-            val delivery = if (reminder.kind == ReminderKind.DEADLINE) settings.deadlineDelivery else settings.routineDelivery
+            val delivery = if (reminder.kind == ReminderKind.ROUTINE) settings.routineDelivery else settings.deadlineDelivery
             when (delivery) {
                 Delivery.POPUP -> if (screenUsable) popups += reminder else deferred += reminder
                 Delivery.POPUP_THEN_NOTIFICATION -> if (screenUsable && overlayAllowed) popups += reminder else notifications += reminder
@@ -87,7 +87,7 @@ object FireEngine {
             when {
                 retryMinute in settings.activeWindow && stillToday ->
                     newRetries[reminder.id] = Retry(at = retryAt.atZone(zone).toInstant().toEpochMilli(), count = count)
-                reminder.kind == ReminderKind.DEADLINE ->
+                reminder.kind != ReminderKind.ROUTINE ->
                     newRetries[reminder.id] = Retry(at = nextWindowStartMillis(now, settings, zone), count = count)
                 else -> newRetries.remove(reminder.id)
             }
@@ -101,8 +101,8 @@ object FireEngine {
         when {
             popups.isEmpty() -> onFinished()
             overlayAllowed -> {
-                if (popups.any { it.kind == ReminderKind.DEADLINE }) Haptics.tick(context)
-                Popup.show(context, popups, settings.popupSeconds * 1000L, onFinished)
+                if (popups.any { it.kind != ReminderKind.ROUTINE }) Haptics.tick(context)
+                Popup.show(context, popups, settings.popupSeconds * 1000L, settings.popupPosition, onFinished)
             }
             else -> {
                 // No overlay permission: a plain toast is the least annoying thing left.

@@ -41,6 +41,7 @@ object Cadence {
         val slots = when (reminder.kind) {
             ReminderKind.DEADLINE -> deadlineSlots(reminder, day, rng, window)
             ReminderKind.ROUTINE -> routineSlots(reminder, rng, window)
+            ReminderKind.EVENT -> eventSlots(reminder, day, rng, window)
         }
         return slots.distinct().sorted()
     }
@@ -80,6 +81,39 @@ object Cadence {
             }
         }
         return slots
+    }
+
+    /**
+     * Events are things you just attend, so they get a handful of heads-ups instead of nagging:
+     * one on the first lead day (if the lead is longer than a day), one the day before (later in
+     * the day), one on the morning of, and a final call an hour before a timed event.
+     */
+    private fun eventSlots(r: Reminder, day: LocalDate, rng: Random, window: IntRange): List<LocalTime> {
+        val due = r.dueLocalDate ?: return emptyList()
+        val daysLeft = ChronoUnit.DAYS.between(day, due).toInt()
+        if (daysLeft < 0) return emptyList()
+        val lead = r.leadDays.coerceIn(1, 30)
+        val start = window.first
+        val end = window.last + 1
+        val eventMinute = r.dueLocalTime?.let { it.toSecondOfDay() / 60 }
+        return when {
+            daysLeft == 0 -> {
+                val out = mutableListOf<LocalTime>()
+                val latest = min(start + 180, eventMinute?.minus(45) ?: end)
+                if (latest > start) out += spread(1, start, min(latest, end), rng)
+                if (eventMinute != null) {
+                    val finalCall = eventMinute - FINAL_CALL_MINUTES.toInt()
+                    if (finalCall in window && out.none { abs(it.toSecondOfDay() / 60 - finalCall) < 30 }) {
+                        out += LocalTime.of(finalCall / 60, finalCall % 60)
+                    }
+                }
+                out
+            }
+            daysLeft == 1 -> spread(1, start + (end - start) * 55 / 100, end, rng)
+            daysLeft == lead && lead > 1 -> spread(1, start, end, rng)
+            lead >= 7 && daysLeft == 3 -> spread(1, start, end, rng)
+            else -> emptyList()
+        }
     }
 
     private fun routineSlots(r: Reminder, rng: Random, window: IntRange): List<LocalTime> {

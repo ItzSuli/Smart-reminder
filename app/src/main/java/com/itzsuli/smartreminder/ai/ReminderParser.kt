@@ -60,7 +60,7 @@ class ReminderParser(private val settingsProvider: () -> Settings) {
         return ai.copy(
             title = ai.title.ifBlank { local.title },
             details = ai.details.ifBlank { local.details },
-            dueDate = if (kind == ReminderKind.DEADLINE) ai.dueDate ?: local.dueDate else null,
+            dueDate = if (kind != ReminderKind.ROUTINE) ai.dueDate ?: local.dueDate else null,
             dueTime = ai.dueTime ?: local.dueTime,
             dayParts = if (kind == ReminderKind.ROUTINE) ai.dayParts.ifEmpty { local.dayParts } else emptyList(),
             emoji = ai.emoji.ifBlank { local.emoji },

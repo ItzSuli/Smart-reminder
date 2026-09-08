@@ -5,70 +5,122 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg"
     android:orientation="vertical"
-    android:padding="14dp">
+    android:paddingStart="18dp"
+    android:paddingTop="16dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="16dp">
 
+    <!-- header: kicker + date on the left, Speak / Add on the right -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/widget_title"
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="@string/app_name"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:orientation="vertical">
 
-        <TextView
+            <TextView
+                android:id="@+id/widget_kicker"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:letterSpacing="0.12"
+                android:text="@string/widget_kicker"
+                android:textAllCaps="true"
+                android:textColor="#C7C4FF"
+                android:textSize="10.5sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widget_date"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:maxLines="1"
+                android:text="Tuesday, Sep 8"
+                android:textColor="#FFFFFF"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <ImageView
             android:id="@+id/widget_voice"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@drawable/widget_pill_dark"
-            android:paddingStart="10dp"
-            android:paddingTop="5dp"
-            android:paddingEnd="10dp"
-            android:paddingBottom="5dp"
-            android:text="@string/widget_speak"
-            android:textColor="#FFFFFF"
-            android:textSize="12sp" />
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:background="@drawable/widget_button_mic"
+            android:contentDescription="@string/shortcut_voice_long"
+            android:padding="9dp"
+            android:src="@drawable/ic_widget_mic" />
 
-        <TextView
+        <ImageView
             android:id="@+id/widget_add"
-            android:layout_width="wrap_content"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/widget_button_add"
+            android:contentDescription="@string/shortcut_add_long"
+            android:padding="8dp"
+            android:src="@drawable/ic_widget_add" />
+    </LinearLayout>
+
+    <!-- row 1 -->
+    <LinearLayout
+        android:id="@+id/widget_row1"
+        style="@style/WidgetRowLayout"
+        android:layout_marginTop="14dp">
+        <TextView android:id="@+id/widget_emoji1" style="@style/WidgetEmoji" android:text="📚" />
+        <LinearLayout
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:background="@drawable/widget_pill"
-            android:paddingStart="12dp"
-            android:paddingTop="5dp"
-            android:paddingEnd="12dp"
-            android:paddingBottom="5dp"
-            android:text="@string/widget_add"
-            android:textColor="#15122A"
-            android:textSize="12sp"
-            android:textStyle="bold" />
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView android:id="@+id/widget_title1" style="@style/WidgetTitle" android:text="English homework: read page 32" />
+            <TextView android:id="@+id/widget_sub1" style="@style/WidgetSub" android:text="Sat, Oct 10 · in 3 days" />
+        </LinearLayout>
+        <TextView android:id="@+id/widget_chip1" style="@style/WidgetChip" android:text="3d" />
+    </LinearLayout>
+
+    <!-- row 2 -->
+    <LinearLayout android:id="@+id/widget_row2" style="@style/WidgetRowLayout">
+        <TextView android:id="@+id/widget_emoji2" style="@style/WidgetEmoji" android:text="🦷" />
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView android:id="@+id/widget_title2" style="@style/WidgetTitle" android:text="Dentist" />
+            <TextView android:id="@+id/widget_sub2" style="@style/WidgetSub" android:text="Thu, Oct 15 · 10:30" />
+        </LinearLayout>
+        <TextView android:id="@+id/widget_chip2" style="@style/WidgetChip" android:background="@drawable/widget_chip_event" android:text="Thu" />
+    </LinearLayout>
+
+    <!-- row 3 -->
+    <LinearLayout android:id="@+id/widget_row3" style="@style/WidgetRowLayout">
+        <TextView android:id="@+id/widget_emoji3" style="@style/WidgetEmoji" android:text="📝" />
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView android:id="@+id/widget_title3" style="@style/WidgetTitle" android:text="Math exam" />
+            <TextView android:id="@+id/widget_sub3" style="@style/WidgetSub" android:text="Mon, Oct 19 · in 12 days" />
+        </LinearLayout>
+        <TextView android:id="@+id/widget_chip3" style="@style/WidgetChip" android:text="12d" />
     </LinearLayout>
 
     <TextView
-        android:id="@+id/widget_row1"
-        style="@style/WidgetRow"
-        android:layout_marginTop="10dp" />
-
-    <TextView
-        android:id="@+id/widget_row2"
-        style="@style/WidgetRow" />
-
-    <TextView
-        android:id="@+id/widget_row3"
-        style="@style/WidgetRow" />
-
-    <TextView
         android:id="@+id/widget_empty"
-        style="@style/WidgetRow"
-        android:layout_marginTop="10dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
         android:text="@string/widget_empty"
-        android:textColor="#99FFFFFF" />
+        android:textColor="#B3FFFFFF"
+        android:textSize="13sp"
+        android:visibility="gone" />
 </LinearLayout>
